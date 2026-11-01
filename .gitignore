@@ -41,3 +41,5 @@ Thumbs.db
 
 # Misc
 .turbo
+# Vite temporary files
+*.timestamp-*.mjs
