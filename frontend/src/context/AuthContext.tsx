@@ -21,44 +21,62 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const USER_CACHE_KEY = 'lifesynch_cached_user';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [token, setToken] = useState<string | null>(getStoredToken());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !getStoredToken() || !localStorage.getItem(USER_CACHE_KEY));
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCurrentUser = useCallback(async () => {
+  const fetchCurrentUser = useCallback(async (isInitial = false) => {
     const currentToken = getStoredToken();
     if (!currentToken) {
       setUser(null);
+      localStorage.removeItem(USER_CACHE_KEY);
       setIsLoading(false);
       return;
     }
 
     try {
-      setIsLoading(true);
+      if (isInitial && !localStorage.getItem(USER_CACHE_KEY)) {
+        setIsLoading(true);
+      }
       setError(null);
       const res = await apiClient.getCurrentUser();
       if (res.data) {
         setUser(res.data);
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.data));
       } else {
         // Token was invalid or expired
         removeStoredToken();
+        localStorage.removeItem(USER_CACHE_KEY);
         setToken(null);
         setUser(null);
       }
     } catch (err) {
       console.warn('Authentication token verification failed:', err);
-      removeStoredToken();
-      setToken(null);
-      setUser(null);
+      // Only wipe session if server explicitly rejected auth (401/403)
+      if (err instanceof Error && 'statusCode' in err && ((err as any).statusCode === 401 || (err as any).statusCode === 403)) {
+        removeStoredToken();
+        localStorage.removeItem(USER_CACHE_KEY);
+        setToken(null);
+        setUser(null);
+      }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchCurrentUser();
+    fetchCurrentUser(true);
   }, [fetchCurrentUser]);
 
   const loginWithGoogle = async () => {
@@ -89,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiClient.logout().catch(() => {});
     } finally {
       removeStoredToken();
+      localStorage.removeItem(USER_CACHE_KEY);
       setToken(null);
       setUser(null);
     }

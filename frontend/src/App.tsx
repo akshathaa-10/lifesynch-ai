@@ -19,7 +19,8 @@ import { AuthCallback } from './components/auth/AuthCallback';
 import { AppLayout } from './components/layout/AppLayout';
 import { AskAssistant } from './components/assistant/AskAssistant';
 import { PersonalIntelligenceHub } from './components/dashboard/PersonalIntelligenceHub';
-import { apiClient, ApiError, AUTH_TOKEN_KEY } from './services/api';
+import { apiClient, ApiError } from './services/api';
+import { dataCache } from './services/dataCache';
 import { 
   Responsibility, 
   TaskPriority,
@@ -33,7 +34,7 @@ const MainDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState<boolean>(false);
-  const [tasks, setTasks] = useState<Responsibility[]>([]);
+  const [tasks, setTasks] = useState<Responsibility[]>(() => dataCache.get(user?.id, 'tasks', []));
   const [selectedResponsibility, setSelectedResponsibility] = useState<Responsibility | null>(null);
   const [pendingAssistantQuestion, setPendingAssistantQuestion] = useState<string | null>(null);
 
@@ -46,17 +47,22 @@ const MainDashboard: React.FC = () => {
     try {
       const res = await apiClient.updateTask(taskId, { category: newCategory as any });
       if (res.data) {
-        setTasks(prev => prev.map(t => t.id === taskId ? res.data! : t));
+        setTasks(prev => {
+          const updated = prev.map(t => t.id === taskId ? res.data! : t);
+          dataCache.set(user?.id, 'tasks', updated);
+          return updated;
+        });
       }
     } catch (err) {
       console.warn('Failed to update task category:', err);
     }
-  }, []);
+  }, [user?.id]);
 
   // Responsibilities View State
   const [upcomingFilter, setUpcomingFilter] = useState<'all' | 'deadlines' | 'windows' | 'events'>('all');
   const syncInProgressRef = React.useRef<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Real-time clock ticker for time-sensitive deadline recalculations (DUE TODAY -> OVERDUE TODAY)
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());
@@ -69,26 +75,50 @@ const MainDashboard: React.FC = () => {
   }, []);
 
   // Gmail Ingestion State
-  const [emails, setEmails] = useState<EmailRecord[]>([]);
+  const [emails, setEmails] = useState<EmailRecord[]>(() => dataCache.get(user?.id, 'emails', []));
   const [isLoadingEmails, setIsLoadingEmails] = useState<boolean>(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
 
   // Calendar Ingestion State
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEventRecord[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEventRecord[]>(() => dataCache.get(user?.id, 'calendar', []));
   const [isLoadingCalendar, setIsLoadingCalendar] = useState<boolean>(false);
 
   // Reminders & Notifications State (integrated into top navigation)
-  const [reminders, setReminders] = useState<ReminderNotification[]>([]);
+  const [reminders, setReminders] = useState<ReminderNotification[]>(() => dataCache.get(user?.id, 'reminders', []));
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => !dataCache.hasAnyUserCache(user?.id));
+
+  // Sync state from persistent cache whenever user ID resolves
+  useEffect(() => {
+    if (user?.id) {
+      const cachedTasks = dataCache.get<Responsibility[]>(user.id, 'tasks', []);
+      const cachedEmails = dataCache.get<EmailRecord[]>(user.id, 'emails', []);
+      const cachedCal = dataCache.get<CalendarEventRecord[]>(user.id, 'calendar', []);
+      const cachedRem = dataCache.get<ReminderNotification[]>(user.id, 'reminders', []);
+
+      if (cachedTasks.length > 0) setTasks(prev => prev.length === 0 ? cachedTasks : prev);
+      if (cachedEmails.length > 0) setEmails(prev => prev.length === 0 ? cachedEmails : prev);
+      if (cachedCal.length > 0) setCalendarEvents(prev => prev.length === 0 ? cachedCal : prev);
+      if (cachedRem.length > 0) setReminders(prev => prev.length === 0 ? cachedRem : prev);
+
+      if (cachedTasks.length > 0 || cachedEmails.length > 0 || cachedCal.length > 0) {
+        setIsInitialLoading(false);
+      }
+    }
+  }, [user?.id]);
 
   const handleMarkReminderAsRead = useCallback(async (id: string) => {
     try {
       await apiClient.markReminderAsRead(id);
-      setReminders(prev => prev.map(r => r.id === id ? { ...r, isRead: true } : r));
+      setReminders(prev => {
+        const updated = prev.map(r => r.id === id ? { ...r, isRead: true } : r);
+        dataCache.set(user?.id, 'reminders', updated);
+        return updated;
+      });
     } catch (err) {
       console.warn('Failed to mark reminder as read:', err);
     }
-  }, []);
+  }, [user?.id]);
 
   // Auth expiry — forces re-login with a friendly message
   const [authExpiredError, setAuthExpiredError] = useState<string | null>(null);
@@ -110,6 +140,7 @@ const MainDashboard: React.FC = () => {
       const res = await apiClient.getTasks();
       const incoming = res.data;
       if (incoming) {
+        dataCache.set(user?.id, 'tasks', incoming);
         setTasks(prev => {
           if (prev.length === incoming.length) {
             const prevMap = new Map(prev.map(p => [p.id, p]));
@@ -164,7 +195,7 @@ const MainDashboard: React.FC = () => {
       // Silent — keep existing tasks visible on background failure
       console.warn('Failed to fetch responsibilities (silent):', err instanceof Error ? err.message : err);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchEmails = useCallback(async (quiet = false) => {
     if (!quiet) setIsLoadingEmails(true);
@@ -172,6 +203,7 @@ const MainDashboard: React.FC = () => {
       const res = await apiClient.getEmails(100);
       const incoming = res.data;
       if (incoming) {
+        dataCache.set(user?.id, 'emails', incoming);
         setEmails(prev => {
           if (prev.length === incoming.length && prev.length > 0 && prev[0].id === incoming[0].id) {
             return prev;
@@ -188,7 +220,7 @@ const MainDashboard: React.FC = () => {
     } finally {
       if (!quiet) setIsLoadingEmails(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchCalendarEvents = useCallback(async (quiet = false) => {
     if (!quiet) setIsLoadingCalendar(true);
@@ -196,6 +228,7 @@ const MainDashboard: React.FC = () => {
       const res = await apiClient.getCalendarEvents(100);
       const incoming = res.data;
       if (incoming) {
+        dataCache.set(user?.id, 'calendar', incoming);
         setCalendarEvents(prev => {
           if (prev.length === incoming.length && prev.length > 0 && prev[0].id === incoming[0].id) {
             return prev;
@@ -212,13 +245,14 @@ const MainDashboard: React.FC = () => {
     } finally {
       if (!quiet) setIsLoadingCalendar(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchReminders = useCallback(async () => {
     try {
       const res = await apiClient.getReminders();
       const incoming = res.data;
       if (incoming) {
+        dataCache.set(user?.id, 'reminders', incoming);
         setReminders(prev => {
           if (prev.length === incoming.length) {
             const isSame = prev.every((r, idx) => r.id === incoming[idx].id && r.isRead === incoming[idx].isRead);
@@ -231,12 +265,27 @@ const MainDashboard: React.FC = () => {
       // Silent — keep existing notifications visible on background failure
       console.warn('Failed to fetch reminders (silent):', err instanceof Error ? err.message : err);
     }
-  }, []);
+  }, [user?.id]);
 
-  // Fully automatic real-time background sync for Gmail, Google Calendar, and Responsibilities
-  const performBackgroundSync = useCallback(async () => {
+  // 1. Fast Local Database Refresh (immediate on mount & periodic)
+  const fetchAllLocalData = useCallback(async () => {
+    try {
+      await Promise.allSettled([
+        fetchTasks(),
+        fetchEmails(true),
+        fetchCalendarEvents(true),
+        fetchReminders()
+      ]);
+    } finally {
+      setIsInitialLoading(false);
+    }
+  }, [fetchTasks, fetchEmails, fetchCalendarEvents, fetchReminders]);
+
+  // 2. Quiet External Background Sync with Google APIs and AI processing
+  const triggerGoogleSync = useCallback(async () => {
     if (syncInProgressRef.current) return;
     syncInProgressRef.current = true;
+    setIsSyncing(true);
 
     try {
       // 1. Quietly synchronize Google Calendar and Gmail in background
@@ -263,46 +312,52 @@ const MainDashboard: React.FC = () => {
       await apiClient.generateResponsibilities().catch(() => {});
 
       // 3. Update active data quietly without full-page reloads, flashing, or scroll-position resets
-      await Promise.all([
-        fetchTasks(),
-        fetchEmails(true),
-        fetchCalendarEvents(true),
-        fetchReminders()
-      ]);
+      await fetchAllLocalData();
       setLastSyncTime(new Date());
     } catch (err) {
       console.warn('Background auto-sync failed (silent):', err);
     } finally {
       syncInProgressRef.current = false;
+      setIsSyncing(false);
     }
-  }, [fetchTasks, fetchEmails, fetchCalendarEvents, fetchReminders]);
+  }, [fetchAllLocalData]);
 
   useEffect(() => {
     fetchHealth();
-    performBackgroundSync();
+    // Fast initial local database load (renders within milliseconds)
+    fetchAllLocalData();
 
-    // Automatic polling interval: refresh data and background-sync Google services automatically every 10 seconds
-    const pollInterval = setInterval(() => {
-      performBackgroundSync();
-    }, 10000);
+    // Start background Google sync quietly after a short 2-second grace period
+    const initialSyncTimer = setTimeout(() => {
+      triggerGoogleSync();
+    }, 2000);
 
-    return () => clearInterval(pollInterval);
-  }, [fetchHealth, performBackgroundSync]);
+    // Periodic lightweight DB refresh every 30 seconds
+    const localPollTimer = setInterval(() => {
+      fetchAllLocalData();
+    }, 30000);
 
-  // Real-time sync when window regains focus (e.g. user returns after creating/updating an event in Google Calendar or Gmail)
+    // Periodic Google background sync every 90 seconds
+    const googleSyncTimer = setInterval(() => {
+      triggerGoogleSync();
+    }, 90000);
+
+    return () => {
+      clearTimeout(initialSyncTimer);
+      clearInterval(localPollTimer);
+      clearInterval(googleSyncTimer);
+    };
+  }, [fetchHealth, fetchAllLocalData, triggerGoogleSync]);
+
+  // Real-time sync when window regains focus (throttled to avoid redundant API storms)
   useEffect(() => {
     const handleFocus = () => {
-      performBackgroundSync();
+      fetchAllLocalData();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [performBackgroundSync]);
-
-  // Real-time sync when switching tabs
-  useEffect(() => {
-    performBackgroundSync();
-  }, [activeTab, performBackgroundSync]);
+  }, [fetchAllLocalData]);
 
 
   // Sort calendar events strictly in chronological order using actual event date AND time
@@ -380,7 +435,7 @@ const MainDashboard: React.FC = () => {
       case 'high':
         return (
           <span
-            className="w-4 h-4 rounded-full bg-rose-500/15 border border-rose-500/35 text-rose-400 text-[9px] font-bold flex items-center justify-center shrink-0 shadow-sm"
+            className="w-4 h-4 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
             title="High Priority"
             aria-label="High Priority"
           >
@@ -390,7 +445,7 @@ const MainDashboard: React.FC = () => {
       case 'medium':
         return (
           <span
-            className="w-4 h-4 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[9px] font-bold flex items-center justify-center shrink-0 shadow-sm"
+            className="w-4 h-4 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
             title="Medium Priority"
             aria-label="Medium Priority"
           >
@@ -401,7 +456,7 @@ const MainDashboard: React.FC = () => {
       default:
         return (
           <span
-            className="w-4 h-4 rounded-full bg-teal-500/15 border border-teal-500/35 text-teal-300 text-[9px] font-bold flex items-center justify-center shrink-0 shadow-sm"
+            className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
             title="Low Priority"
             aria-label="Low Priority"
           >
@@ -445,26 +500,26 @@ const MainDashboard: React.FC = () => {
 
     if (isBoth) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-slate-300 font-medium">
-          <Mail className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium">
+          <Mail className="w-3.5 h-3.5 text-rose-500 shrink-0" />
           <span>Gmail</span>
-          <span className="text-slate-600">/</span>
-          <CalendarIcon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+          <span className="text-slate-300">/</span>
+          <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
           <span>Calendar</span>
         </span>
       );
     }
     if (hasCal) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-indigo-300 font-medium">
-          <CalendarIcon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+        <span className="inline-flex items-center gap-1.5 text-xs text-indigo-800 font-medium">
+          <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
           <span>Calendar</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-rose-300 font-medium">
-        <Mail className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+      <span className="inline-flex items-center gap-1.5 text-xs text-rose-800 font-medium">
+        <Mail className="w-3.5 h-3.5 text-rose-500 shrink-0" />
         <span>Gmail</span>
       </span>
     );
@@ -518,22 +573,22 @@ const MainDashboard: React.FC = () => {
 
   const getModalStatus = (item: Responsibility, refDate: Date): { label: string; color: string } => {
     if (!item.dueDate || !item.dueDate.trim()) {
-      return { label: 'No Deadline', color: 'text-slate-400 bg-slate-800/60 border-slate-700/60' };
+      return { label: 'No Deadline', color: 'text-slate-600 bg-slate-100 border-slate-200' };
     }
     const parsed = parseTaskDate(item.dueDate, item.dueTime, refDate);
     if (!parsed.targetDate || parsed.diffDays === null) {
-      return { label: 'No Deadline', color: 'text-slate-400 bg-slate-800/60 border-slate-700/60' };
+      return { label: 'No Deadline', color: 'text-slate-600 bg-slate-100 border-slate-200' };
     }
     if (parsed.diffDays < 0) {
-      return { label: 'Older Overdue', color: 'text-rose-300 bg-rose-950/50 border-rose-800/50' };
+      return { label: 'Older Overdue', color: 'text-rose-700 bg-rose-50 border-rose-200' };
     }
     if (parsed.diffDays === 0) {
       if (parsed.hasTime && parsed.targetDate.getTime() < refDate.getTime()) {
-        return { label: 'Overdue Today', color: 'text-rose-300 bg-rose-950/50 border-rose-800/50' };
+        return { label: 'Overdue Today', color: 'text-rose-700 bg-rose-50 border-rose-200' };
       }
-      return { label: 'Due Today', color: 'text-amber-300 bg-amber-950/50 border-amber-700/50' };
+      return { label: 'Due Today', color: 'text-amber-800 bg-amber-50 border-amber-200' };
     }
-    return { label: 'Coming Up', color: 'text-indigo-300 bg-indigo-950/50 border-indigo-700/50' };
+    return { label: 'Coming Up', color: 'text-indigo-800 bg-indigo-50 border-indigo-200' };
   };
 
   // 1. Natural personal assistant wording cleanup
@@ -1016,7 +1071,7 @@ const MainDashboard: React.FC = () => {
 
       if (isBoth) {
         return (
-          <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+          <div className="inline-flex items-center gap-1.5 justify-end whitespace-nowrap">
             <button
               type="button"
               onClick={(e) => {
@@ -1024,10 +1079,10 @@ const MainDashboard: React.FC = () => {
                 if (item.sourceId) setExpandedEmailId(item.sourceId);
                 setActiveTab('gmail');
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
               title="Open corresponding Gmail message"
             >
-              <Mail className="w-3 h-3 text-rose-600" />
+              <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
               <span>Gmail</span>
             </button>
             <button
@@ -1036,10 +1091,10 @@ const MainDashboard: React.FC = () => {
                 e.stopPropagation();
                 setActiveTab('calendar');
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
               title="Open corresponding Google Calendar event"
             >
-              <CalendarIcon className="w-3 h-3 text-indigo-600" />
+              <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
               <span>Calendar</span>
             </button>
           </div>
@@ -1054,10 +1109,10 @@ const MainDashboard: React.FC = () => {
               e.stopPropagation();
               setActiveTab('calendar');
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition-colors cursor-pointer group/src"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
             title="Open corresponding Google Calendar event"
           >
-            <CalendarIcon className="w-3.5 h-3.5 text-indigo-600 group-hover/src:scale-110 transition-transform" />
+            <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
             <span>Calendar</span>
           </button>
         );
@@ -1071,10 +1126,10 @@ const MainDashboard: React.FC = () => {
             if (item.sourceId) setExpandedEmailId(item.sourceId);
             setActiveTab('gmail');
           }}
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition-colors cursor-pointer group/src"
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
           title="Open corresponding Gmail message"
         >
-          <Mail className="w-3.5 h-3.5 text-rose-600 group-hover/src:scale-110 transition-transform" />
+          <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
           <span>Gmail</span>
         </button>
       );
@@ -1082,21 +1137,46 @@ const MainDashboard: React.FC = () => {
 
     const renderResponsibilityTable = (
       items: Responsibility[],
-      options?: { isMissed?: boolean; isNoDeadline?: boolean; isInformative?: boolean }
+      options?: { 
+        isMissed?: boolean; 
+        isNoDeadline?: boolean; 
+        isInformative?: boolean;
+        title?: string;
+        subtext?: string;
+        icon?: React.ReactNode;
+      }
     ) => {
       if (items.length === 0) return null;
 
       return (
-        <div className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-sm">
+        <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
+          {/* Table Header Banner - Matches Deep Teal Header from Reference */}
+          {options?.title && (
+            <div className="px-5 py-3.5 bg-[#34515e] border-b border-[#283e48] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+                  {options.icon}
+                  <span>{options.title}</span>
+                </span>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+                  {items.length}
+                </span>
+              </div>
+              {options.subtext && (
+                <p className="hidden sm:block text-xs text-slate-200/90 font-normal">{options.subtext}</p>
+              )}
+            </div>
+          )}
+
           {/* Desktop Table View (>= md screens): Responsive 4-column layout */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse table-fixed">
               <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4 w-[36%]">Event / Responsibility</th>
-                  <th className="py-3 px-4 w-[28%]">Action Required</th>
-                  <th className="py-3 px-4 w-[24%]">Deadline / Date & Time</th>
-                  <th className="py-3 px-4 w-[12%] text-right">Source</th>
+                <tr className="border-b border-slate-200 bg-[#f0f5f8] text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  <th className="py-3 px-4 w-[36%] text-left font-bold">Event / Responsibility</th>
+                  <th className="py-3 px-4 w-[26%] text-left font-bold">Action Required</th>
+                  <th className="py-3 px-4 w-[22%] text-left font-bold">Deadline / Date & Time</th>
+                  <th className="py-3 px-4 w-[16%] text-right font-bold">Source</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -1107,36 +1187,56 @@ const MainDashboard: React.FC = () => {
                   const isTodayDue = schedule.kind === 'deadline' && schedule.diffDays === 0 && !schedule.isPast;
                   const conciseAction = item.sourceContext?.nextStep || item.action;
 
-                  let dateColor = 'text-slate-700';
-
-                  if (schedule.kind === 'event') {
-                    dateColor = 'text-sky-700 font-medium';
-                  } else if (schedule.kind === 'program') {
-                    dateColor = 'text-indigo-700 font-medium';
-                  } else if (schedule.kind === 'window') {
-                    dateColor = 'text-emerald-700 font-medium';
-                  } else {
-                    if (schedule.isPast) {
-                      dateColor = 'text-rose-600 font-medium';
-                    } else if (isTodayDue) {
-                      dateColor = 'text-amber-700 font-semibold';
-                    } else {
-                      dateColor = 'text-slate-700';
+                  const renderDateStatus = () => {
+                    if (options?.isNoDeadline || formattedDate === 'No deadline') {
+                      return <span className="text-slate-400">{formattedDate}</span>;
                     }
-                  }
-
-                  if (options?.isNoDeadline || formattedDate === 'No deadline') {
-                    dateColor = 'text-slate-400';
-                  } else if (options?.isInformative || item.sourceContext?.classification === 'informational') {
-                    dateColor = 'text-slate-500';
-                  }
+                    if (options?.isInformative || item.sourceContext?.classification === 'informational') {
+                      return <span className="text-slate-500 font-medium">{formattedDate}</span>;
+                    }
+                    if (schedule.isPast) {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                          <span>{formattedDate}</span>
+                        </span>
+                      );
+                    }
+                    if (isTodayDue) {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                          <span>{formattedDate}</span>
+                        </span>
+                      );
+                    }
+                    if (schedule.kind === 'window') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-800 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <span>{formattedDate}</span>
+                        </span>
+                      );
+                    }
+                    if (schedule.kind === 'event' || schedule.kind === 'program') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                          <span>{formattedDate}</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-slate-700 font-medium">{formattedDate}</span>
+                    );
+                  };
 
                   return (
                     <tr
                       key={item.id}
                       onClick={() => setSelectedResponsibility(item)}
                       className={`group hover:bg-slate-50/80 transition-colors cursor-pointer ${
-                        options?.isMissed ? 'opacity-85' : ''
+                        options?.isMissed ? 'opacity-90' : ''
                       }`}
                     >
                       {/* Column 1: Event / Responsibility */}
@@ -1144,36 +1244,36 @@ const MainDashboard: React.FC = () => {
                         <div className="flex items-start gap-2.5">
                           <div className="shrink-0 mt-0.5" title={schedule.kind === 'event' ? 'Calendar Commitment' : `Priority: ${item.priority}`}>
                             {schedule.kind === 'event' ? (
-                              <div className="w-4 h-4 rounded-full bg-sky-100 border border-sky-300 flex items-center justify-center text-sky-700 text-[9px] font-bold">
+                              <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs">
                                 <CalendarIcon className="w-2.5 h-2.5" />
                               </div>
                             ) : schedule.kind === 'program' ? (
-                              <div className="w-4 h-4 rounded-full bg-indigo-100 border border-indigo-300 flex items-center justify-center text-indigo-700 text-[9px] font-bold">
+                              <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[10px] font-bold shadow-2xs">
                                 P
                               </div>
                             ) : schedule.kind === 'window' ? (
-                              <div className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 text-[9px] font-bold">
+                              <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs">
                                 W
                               </div>
                             ) : (
                               renderPriorityDot(item.priority)
                             )}
                           </div>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <h3 className={`font-semibold transition-colors leading-snug ${
-                              options?.isMissed ? 'text-slate-400' : 'text-slate-800 group-hover:text-blue-600'
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <h3 className={`font-semibold text-xs leading-snug line-clamp-2 transition-colors ${
+                              options?.isMissed ? 'text-slate-500' : 'text-slate-900 group-hover:text-[#34515e]'
                             }`}>
                               {titleText}
                             </h3>
-                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
                               {item.category && (
-                                <span className="capitalize">{item.category}</span>
+                                <span className="capitalize font-medium text-slate-600">{item.category}</span>
                               )}
                               {item.sourceContext?.sender && (
-                                <span className="truncate max-w-[160px]">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
+                                <span className="truncate max-w-[170px] text-slate-400">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
                               )}
                               {item.sourceContext?.location && (
-                                <span className="truncate max-w-[140px]">· {item.sourceContext.location}</span>
+                                <span className="truncate max-w-[140px] text-slate-400">· {item.sourceContext.location}</span>
                               )}
                             </div>
                           </div>
@@ -1183,27 +1283,27 @@ const MainDashboard: React.FC = () => {
                       {/* Column 2: Action Required */}
                       <td className="py-3.5 px-4 align-top">
                         {conciseAction ? (
-                          <div className="flex items-start gap-1.5 text-xs text-blue-700 font-medium pt-0.5">
-                            <ArrowRight className="w-3 h-3 text-blue-500 shrink-0 mt-0.5" />
-                            <span className="leading-snug">{conciseAction}</span>
+                          <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug">
+                            <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                            <span className="line-clamp-2 font-medium">{conciseAction}</span>
                           </div>
                         ) : (options?.isInformative || item.sourceContext?.classification === 'informational') ? (
-                          <span className="text-slate-500 text-xs pt-0.5 block">No action required</span>
+                          <span className="text-slate-400 text-xs leading-snug block">No action required</span>
                         ) : (
-                          <span className="text-slate-400 text-xs italic pt-0.5 block">Review responsibility</span>
+                          <span className="text-slate-400 text-xs italic leading-snug block">Review responsibility</span>
                         )}
                       </td>
 
                       {/* Column 3: Deadline / Date & Time */}
                       <td className="py-3.5 px-4 align-top">
-                        <span className={`text-xs ${dateColor}`}>
-                          {formattedDate}
-                        </span>
+                        <div className="text-xs leading-snug">
+                          {renderDateStatus()}
+                        </div>
                       </td>
 
                       {/* Column 4: Source (Clickable) */}
                       <td className="py-3.5 px-4 align-top text-right">
-                        <div className="inline-flex items-center justify-end pt-0.5">
+                        <div className="flex items-center justify-end whitespace-nowrap">
                           {renderClickableSource(item)}
                         </div>
                       </td>
@@ -1223,67 +1323,87 @@ const MainDashboard: React.FC = () => {
               const isTodayDue = schedule.kind === 'deadline' && schedule.diffDays === 0 && !schedule.isPast;
               const conciseAction = item.sourceContext?.nextStep || item.action;
 
-              let dateColor = 'text-slate-700';
-
-              if (schedule.kind === 'event') {
-                dateColor = 'text-sky-700 font-medium';
-              } else if (schedule.kind === 'program') {
-                dateColor = 'text-indigo-700 font-medium';
-              } else if (schedule.kind === 'window') {
-                dateColor = 'text-emerald-700 font-medium';
-              } else {
-                if (schedule.isPast) {
-                  dateColor = 'text-rose-600 font-medium';
-                } else if (isTodayDue) {
-                  dateColor = 'text-amber-700 font-semibold';
-                } else {
-                  dateColor = 'text-slate-700';
+              const renderMobileDate = () => {
+                if (options?.isNoDeadline || formattedDate === 'No deadline') {
+                  return <span className="text-slate-400">{formattedDate}</span>;
                 }
-              }
-
-              if (options?.isNoDeadline || formattedDate === 'No deadline') {
-                dateColor = 'text-slate-400';
-              } else if (options?.isInformative || item.sourceContext?.classification === 'informational') {
-                dateColor = 'text-slate-500';
-              }
+                if (options?.isInformative || item.sourceContext?.classification === 'informational') {
+                  return <span className="text-slate-500">{formattedDate}</span>;
+                }
+                if (schedule.isPast) {
+                  return (
+                    <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                      <span>{formattedDate}</span>
+                    </span>
+                  );
+                }
+                if (isTodayDue) {
+                  return (
+                    <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                      <span>{formattedDate}</span>
+                    </span>
+                  );
+                }
+                if (schedule.kind === 'window') {
+                  return (
+                    <span className="inline-flex items-center gap-1.5 text-emerald-800 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span>{formattedDate}</span>
+                    </span>
+                  );
+                }
+                return (
+                  <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                    <span>{formattedDate}</span>
+                  </span>
+                );
+              };
 
               return (
                 <div
                   key={item.id}
                   onClick={() => setSelectedResponsibility(item)}
-                  className={`p-3.5 hover:bg-slate-50 transition-colors cursor-pointer space-y-2.5 ${
-                    options?.isMissed ? 'opacity-85' : ''
+                  className={`p-4 hover:bg-slate-50/70 transition-colors cursor-pointer space-y-2.5 ${
+                    options?.isMissed ? 'opacity-90' : ''
                   }`}
                 >
                   {/* Top: Priority + Title + Clickable Source */}
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
                       <div className="shrink-0 mt-0.5">
                         {schedule.kind === 'event' ? (
-                          <div className="w-4 h-4 rounded-full bg-sky-100 border border-sky-300 flex items-center justify-center text-sky-700 text-[9px] font-bold">
+                          <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs">
                             <CalendarIcon className="w-2.5 h-2.5" />
                           </div>
                         ) : schedule.kind === 'program' ? (
-                          <div className="w-4 h-4 rounded-full bg-indigo-100 border border-indigo-300 flex items-center justify-center text-indigo-700 text-[9px] font-bold">
+                          <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[10px] font-bold shadow-2xs">
                             P
                           </div>
                         ) : schedule.kind === 'window' ? (
-                          <div className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 text-[9px] font-bold">
+                          <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs">
                             W
                           </div>
                         ) : (
                           renderPriorityDot(item.priority)
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className={`text-xs font-semibold leading-snug truncate ${
-                          options?.isMissed ? 'text-slate-400' : 'text-slate-800'
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <h3 className={`text-xs font-semibold leading-snug line-clamp-2 ${
+                          options?.isMissed ? 'text-slate-500' : 'text-slate-900'
                         }`}>
                           {titleText}
                         </h3>
-                        {item.category && (
-                          <span className="text-xs text-slate-400 capitalize">{item.category}</span>
-                        )}
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
+                          {item.category && (
+                            <span className="capitalize font-medium text-slate-600">{item.category}</span>
+                          )}
+                          {item.sourceContext?.sender && (
+                            <span className="truncate max-w-[150px] text-slate-400">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="shrink-0" onClick={e => e.stopPropagation()}>
@@ -1293,19 +1413,19 @@ const MainDashboard: React.FC = () => {
 
                   {/* Action Required */}
                   {conciseAction ? (
-                    <div className="flex items-start gap-1.5 text-xs text-blue-700 font-medium pl-6">
-                      <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-                      <span className="leading-snug">{conciseAction}</span>
+                    <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug pl-6.5">
+                      <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                      <span className="line-clamp-2 font-medium">{conciseAction}</span>
                     </div>
                   ) : (options?.isInformative || item.sourceContext?.classification === 'informational') ? (
-                    <div className="text-xs text-slate-500 pl-6">
+                    <div className="text-xs text-slate-400 pl-6.5">
                       <span>No action required</span>
                     </div>
                   ) : null}
 
                   {/* Deadline / Date & Time */}
-                  <div className="text-xs pl-6 pt-0.5">
-                    <span className={dateColor}>{formattedDate}</span>
+                  <div className="text-xs pl-6.5 pt-0.5">
+                    {renderMobileDate()}
                   </div>
                 </div>
               );
@@ -1322,7 +1442,7 @@ const MainDashboard: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-                <CheckSquare className="w-6 h-6 text-[#1a68f0]" />
+                <CheckSquare className="w-6 h-6 text-[#34515e]" />
                 Your Responsibilities
               </h1>
               <p className="text-xs text-slate-500 mt-1">
@@ -1343,36 +1463,24 @@ const MainDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Section Navigation Indicators placed directly below the page heading */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+          {/* Section Indicators - Clean 4-card overview matching reference design */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 pt-1">
             {/* 1. Your Day */}
             <button
               type="button"
               onClick={() => scrollToSection('section-your-day')}
-              className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 cursor-pointer shadow-xs transition-all ${
-                yourDayList.length > 0
-                  ? 'bg-amber-50/80 border-amber-200 hover:bg-amber-100/70'
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}
+              className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  yourDayList.length > 0 
-                    ? 'bg-amber-100 text-amber-700 border border-amber-200' 
-                    : 'bg-slate-100 text-slate-500 border border-slate-200'
-                }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                   <Clock className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-800 truncate">Your Day</div>
-                  <div className="text-xs text-slate-500 truncate">Due today</div>
+                  <div className="text-xs font-bold text-slate-900 tracking-wide truncate">YOUR DAY</div>
+                  <div className="text-[11px] text-slate-500 truncate">Due today</div>
                 </div>
               </div>
-              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${
-                yourDayList.length > 0
-                  ? 'bg-amber-100 text-amber-800 border-amber-300'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
-              }`}>
+              <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
                 {yourDayList.length}
               </span>
             </button>
@@ -1381,30 +1489,18 @@ const MainDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => scrollToSection('section-upcoming')}
-              className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 cursor-pointer shadow-xs transition-all ${
-                upcomingList.length > 0
-                  ? 'bg-indigo-50/80 border-indigo-200 hover:bg-indigo-100/70'
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}
+              className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  upcomingList.length > 0 
-                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
-                    : 'bg-slate-100 text-slate-500 border border-slate-200'
-                }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                   <CalendarIcon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-800 truncate">Upcoming</div>
-                  <div className="text-xs text-slate-500 truncate">Tomorrow & future</div>
+                  <div className="text-xs font-bold text-slate-900 tracking-wide truncate">UPCOMING</div>
+                  <div className="text-[11px] text-slate-500 truncate">Tomorrow & future</div>
                 </div>
               </div>
-              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${
-                upcomingList.length > 0
-                  ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
-              }`}>
+              <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
                 {upcomingList.length}
               </span>
             </button>
@@ -1413,22 +1509,18 @@ const MainDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => scrollToSection('section-passed')}
-              className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 cursor-pointer shadow-xs transition-all ${
-                passedList.length > 0
-                  ? 'bg-slate-100/80 border-slate-300 hover:bg-slate-200/70'
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}
+              className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-800 truncate">Passed</div>
-                  <div className="text-xs text-slate-500 truncate">Past deadlines</div>
+                  <div className="text-xs font-bold text-slate-900 tracking-wide truncate">PASSED</div>
+                  <div className="text-[11px] text-slate-500 truncate">Past deadlines</div>
                 </div>
               </div>
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
+              <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
                 {passedList.length}
               </span>
             </button>
@@ -1437,30 +1529,18 @@ const MainDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => scrollToSection('section-informative')}
-              className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 cursor-pointer shadow-xs transition-all ${
-                informationalTasks.length > 0
-                  ? 'bg-teal-50/80 border-teal-200 hover:bg-teal-100/70'
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}
+              className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  informationalTasks.length > 0
-                    ? 'bg-teal-100 text-teal-700 border border-teal-200'
-                    : 'bg-slate-100 text-slate-500 border border-slate-200'
-                }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                   <Mail className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-800 truncate">Informative</div>
-                  <div className="text-xs text-slate-500 truncate">No action required</div>
+                  <div className="text-xs font-bold text-slate-900 tracking-wide truncate">INFORMATIVE</div>
+                  <div className="text-[11px] text-slate-500 truncate">No action required</div>
                 </div>
               </div>
-              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${
-                informationalTasks.length > 0
-                  ? 'bg-teal-100 text-teal-800 border-teal-300'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
-              }`}>
+              <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
                 {informationalTasks.length}
               </span>
             </button>
@@ -1469,48 +1549,35 @@ const MainDashboard: React.FC = () => {
 
         {/* 1. YOUR DAY */}
         <section id="section-your-day" className="space-y-3 scroll-mt-6">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-            <div className="flex items-center gap-2.5">
-              <Clock className="w-4 h-4 text-amber-600" />
-              <h2 className="text-xs font-bold text-slate-800 tracking-wider uppercase">
-                Your Day
-              </h2>
-              <span className="text-xs text-slate-500 font-normal">
-                (Due today)
-              </span>
-            </div>
-            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-              yourDayList.length > 0
-                ? 'text-amber-800 bg-amber-50 border-amber-200'
-                : 'text-slate-500 bg-slate-100 border-slate-200'
-            }`}>
-              {yourDayList.length}
-            </span>
-          </div>
-
           {yourDayList.length === 0 ? (
-            <div className="p-4 rounded-2xl bg-white/70 border border-slate-200/80 text-xs text-slate-500 text-center shadow-xs">
-              No responsibilities due today.
+            <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
+              <div className="px-5 py-3.5 bg-[#34515e] border-b border-[#283e48] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-white" />
+                    <span>Your Day</span>
+                  </span>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white">0</span>
+                </div>
+                <p className="hidden sm:block text-xs text-slate-200/90 font-normal">Due today</p>
+              </div>
+              <div className="p-5 text-xs text-slate-500 text-center">
+                No responsibilities due today.
+              </div>
             </div>
           ) : (
-            renderResponsibilityTable(yourDayList)
+            renderResponsibilityTable(yourDayList, {
+              title: 'Your Day',
+              subtext: 'Due today',
+              icon: <Clock className="w-4 h-4 text-white" />
+            })
           )}
         </section>
 
         {/* 2. UPCOMING */}
         <section id="section-upcoming" className="space-y-3 scroll-mt-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
-            <div className="flex items-center gap-2.5">
-              <CalendarIcon className="w-4 h-4 text-indigo-600" />
-              <h2 className="text-xs font-bold text-slate-800 tracking-wider uppercase">
-                Upcoming
-              </h2>
-              <span className="text-xs text-slate-500 font-normal">
-                (Tomorrow & future commitments)
-              </span>
-            </div>
-
-            {/* Sub-filter tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+            {/* Sub-filter tabs styled with deep teal active and clean pill layout */}
             <div className="flex items-center gap-1.5 self-start sm:self-auto">
               {(
                 [
@@ -1523,10 +1590,10 @@ const MainDashboard: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setUpcomingFilter(tab.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                     upcomingFilter === tab.id
-                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                      ? 'bg-[#34515e] text-white shadow-2xs'
+                      : 'bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   {tab.label}
@@ -1536,67 +1603,71 @@ const MainDashboard: React.FC = () => {
           </div>
 
           {filteredUpcomingList.length === 0 ? (
-            <div className="p-4 rounded-2xl bg-white/70 border border-slate-200/80 text-xs text-slate-500 text-center shadow-xs">
-              {upcomingFilter === 'all' 
-                ? 'No upcoming responsibilities scheduled.' 
-                : `No upcoming ${upcomingFilter} found.`}
+            <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
+              <div className="px-5 py-3.5 bg-[#34515e] border-b border-[#283e48] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4 text-white" />
+                    <span>Upcoming</span>
+                  </span>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white">0</span>
+                </div>
+                <p className="hidden sm:block text-xs text-slate-200/90 font-normal">Tomorrow & future commitments</p>
+              </div>
+              <div className="p-5 text-xs text-slate-500 text-center">
+                {upcomingFilter === 'all' 
+                  ? 'No upcoming responsibilities scheduled.' 
+                  : `No upcoming ${upcomingFilter} found.`}
+              </div>
             </div>
           ) : (
-            renderResponsibilityTable(filteredUpcomingList)
+            renderResponsibilityTable(filteredUpcomingList, {
+              title: 'Upcoming',
+              subtext: 'Tomorrow & future commitments',
+              icon: <CalendarIcon className="w-4 h-4 text-white" />
+            })
           )}
         </section>
 
         {/* 3. PASSED */}
         {passedList.length > 0 && (
           <section id="section-passed" className="space-y-3 scroll-mt-6">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <h2 className="text-xs font-bold text-slate-800 tracking-wider uppercase">
-                  Passed
-                </h2>
-                <span className="text-xs text-slate-500 font-normal">
-                  (Past deadlines & concluded commitments)
-                </span>
-              </div>
-              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-                {passedList.length}
-              </span>
-            </div>
-
-            {renderResponsibilityTable(passedList, { isMissed: true })}
+            {renderResponsibilityTable(passedList, { 
+              isMissed: true,
+              title: 'Passed',
+              subtext: 'Past deadlines & concluded commitments',
+              icon: <AlertTriangle className="w-4 h-4 text-white" />
+            })}
           </section>
         )}
 
         {/* 4. INFORMATIVE */}
         {informationalTasks.length > 0 && (
           <section id="section-informative" className="space-y-3 scroll-mt-6">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-              <div className="flex items-center gap-2.5">
-                <Mail className="w-4 h-4 text-teal-600" />
-                <h2 className="text-xs font-bold text-slate-800 tracking-wider uppercase">
-                  Informative
-                </h2>
-                <span className="text-xs text-slate-500 font-normal">
-                  (Information updates — no action required)
-                </span>
-              </div>
-              <span className="text-xs font-bold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
-                {informationalTasks.length}
-              </span>
-            </div>
-
-            {renderResponsibilityTable(informationalTasks, { isInformative: true })}
+            {renderResponsibilityTable(informationalTasks, { 
+              isInformative: true,
+              title: 'Informative',
+              subtext: 'Information updates — no action required',
+              icon: <Mail className="w-4 h-4 text-white" />
+            })}
           </section>
         )}
 
         {/* Overall empty state when all lists are empty */}
         {yourDayList.length === 0 && upcomingList.length === 0 && passedList.length === 0 && informationalTasks.length === 0 && (
-          <div className="text-center py-16 px-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 space-y-2">
-            <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-            <h3 className="text-sm font-semibold text-slate-800">You're all caught up.</h3>
-            <p className="text-xs text-slate-500">No active responsibilities found.</p>
-          </div>
+          isInitialLoading ? (
+            <div className="rounded-2xl border border-slate-200/90 bg-white p-8 text-center space-y-3 shadow-xs animate-pulse">
+              <div className="w-8 h-8 rounded-full bg-slate-100 mx-auto" />
+              <div className="w-48 h-4 rounded bg-slate-100 mx-auto" />
+              <div className="w-32 h-3 rounded bg-slate-50 mx-auto" />
+            </div>
+          ) : (
+            <div className="text-center py-16 px-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <h3 className="text-sm font-semibold text-slate-800">You're all caught up.</h3>
+              <p className="text-xs text-slate-500">No active responsibilities found.</p>
+            </div>
+          )
         )}
       </div>
     );
@@ -1619,8 +1690,8 @@ const MainDashboard: React.FC = () => {
       emailCount={emails.length}
       reminders={reminders}
       onMarkReminderAsRead={handleMarkReminderAsRead}
-      isSyncing={false}
-      onTriggerSync={() => performBackgroundSync()}
+      isSyncing={isSyncing}
+      onTriggerSync={() => triggerGoogleSync()}
       syncError={syncError}
     >
 
@@ -1637,9 +1708,9 @@ const MainDashboard: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => {
-              localStorage.removeItem(AUTH_TOKEN_KEY);
-              window.location.reload();
+            onClick={async () => {
+              setAuthExpiredError(null);
+              await logout();
             }}
             className="shrink-0 px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
           >
@@ -1672,8 +1743,8 @@ const MainDashboard: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center">
-                  <Mail className="w-4 h-4 text-rose-600" />
+                <div className="w-9 h-9 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center">
+                  <Mail className="w-4 h-4 text-[#34515e]" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Gmail</h2>
@@ -1683,9 +1754,9 @@ const MainDashboard: React.FC = () => {
             </div>
           </div>
 
-          {isLoadingEmails ? (
+          {isLoadingEmails || (isInitialLoading && emails.length === 0) ? (
             <div className="text-center py-16 space-y-3">
-              <div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-2 border-[#34515e] border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-xs text-slate-500">Loading messages...</p>
             </div>
           ) : emails.length === 0 ? (
@@ -1704,7 +1775,7 @@ const MainDashboard: React.FC = () => {
                 return (
                   <div
                     key={email.id}
-                    className="rounded-2xl bg-white border border-slate-200/80 hover:border-slate-300 shadow-xs transition-all overflow-hidden"
+                    className="rounded-2xl bg-white border border-slate-200/90 hover:border-[#34515e]/40 shadow-xs transition-all overflow-hidden"
                   >
                     {/* Email Row */}
                     <div
@@ -1713,7 +1784,7 @@ const MainDashboard: React.FC = () => {
                     >
                       <div className="flex items-start gap-3">
                         {/* Sender Avatar */}
-                        <div className="w-8 h-8 rounded-full bg-rose-100 border border-rose-200 flex items-center justify-center text-xs font-bold text-rose-700 shrink-0 mt-0.5">
+                        <div className="w-8 h-8 rounded-full bg-[#e2edf2] border border-[#d2e5ed] flex items-center justify-center text-xs font-bold text-[#34515e] shrink-0 mt-0.5">
                           {initials}
                         </div>
 
@@ -1757,8 +1828,8 @@ const MainDashboard: React.FC = () => {
         /* ================= GOOGLE CALENDAR DEDICATED VIEW ================= */
         <div className="space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
-              <CalendarIcon className="w-4 h-4 text-indigo-600" />
+            <div className="w-9 h-9 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center">
+              <CalendarIcon className="w-4 h-4 text-[#34515e]" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">Google Calendar</h2>
@@ -1766,9 +1837,9 @@ const MainDashboard: React.FC = () => {
             </div>
           </div>
 
-          {isLoadingCalendar ? (
+          {isLoadingCalendar || (isInitialLoading && sortedCalendarEvents.length === 0) ? (
             <div className="text-center py-16 space-y-3">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-2 border-[#34515e] border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-xs text-slate-500">Loading events...</p>
             </div>
           ) : sortedCalendarEvents.length === 0 ? (
@@ -1783,7 +1854,7 @@ const MainDashboard: React.FC = () => {
                 const { dateText, timeText } = formatEventTime(event.startTime, event.endTime);
                 const isCancelled = event.status === 'cancelled';
                 const isTentative = event.status === 'tentative';
-                const accentColor = isCancelled ? 'border-l-rose-500' : isTentative ? 'border-l-amber-500' : 'border-l-[#1a68f0]';
+                const accentColor = isCancelled ? 'border-l-rose-500' : isTentative ? 'border-l-amber-500' : 'border-l-[#34515e]';
                 return (
                   <div
                     key={event.id}
@@ -1811,7 +1882,7 @@ const MainDashboard: React.FC = () => {
                               href={event.htmlLink}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs text-[#1a68f0] hover:text-[#1557cc] font-semibold transition-colors"
+                              className="text-xs text-[#34515e] hover:text-[#283e48] font-semibold transition-colors"
                               onClick={e => e.stopPropagation()}
                             >
                               Open →
@@ -1822,8 +1893,8 @@ const MainDashboard: React.FC = () => {
 
                       {/* Date & Time row */}
                       <div className="flex flex-wrap items-center gap-4 text-xs">
-                        <span className="flex items-center gap-1.5 text-indigo-700 font-semibold">
-                          <CalendarIcon className="w-3.5 h-3.5 text-indigo-500" />
+                        <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
+                          <CalendarIcon className="w-3.5 h-3.5 text-[#34515e]" />
                           {dateText}
                         </span>
                         <span className="flex items-center gap-1.5 text-slate-500">
@@ -1884,6 +1955,7 @@ const MainDashboard: React.FC = () => {
           tasks={tasks}
           emails={emails}
           calendarEvents={calendarEvents}
+          isLoading={isInitialLoading}
           onSelectResponsibility={setSelectedResponsibility}
           onSelectEmail={(emailId) => {
             setExpandedEmailId(emailId);
@@ -1903,7 +1975,7 @@ const MainDashboard: React.FC = () => {
           onClick={() => handleAskQuestion('What should I focus on today?')}
           title="Ask LifeSynch AI"
           aria-label="Ask LifeSynch"
-          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#1a68f0] hover:bg-[#1557cc] text-white shadow-xl shadow-blue-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40 cursor-pointer"
+          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#34515e] hover:bg-[#283e48] text-white shadow-xl shadow-[#34515e]/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40 cursor-pointer"
         >
           <span className="text-xl font-bold leading-none">+</span>
         </button>
@@ -1921,7 +1993,7 @@ const MainDashboard: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
-                <span className="text-xs font-bold text-[#1a68f0] uppercase tracking-wider">
+                <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider">
                   Responsibility Details
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 mt-1 leading-snug">
@@ -1947,9 +2019,9 @@ const MainDashboard: React.FC = () => {
             )}
 
             {selectedResponsibility.sourceContext?.nextStep && (
-              <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-1">
-                <span className="text-xs font-bold text-blue-800 uppercase tracking-wider block">Recommended Next Step</span>
-                <p className="text-xs sm:text-sm font-medium text-blue-950">{selectedResponsibility.sourceContext.nextStep}</p>
+              <div className="p-3.5 rounded-2xl bg-[#e2edf2]/60 border border-[#d2e5ed] space-y-1">
+                <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider block">Recommended Next Step</span>
+                <p className="text-xs sm:text-sm font-medium text-slate-800">{selectedResponsibility.sourceContext.nextStep}</p>
               </div>
             )}
 
@@ -2017,9 +2089,9 @@ const MainDashboard: React.FC = () => {
                       setExpandedEmailId(selectedResponsibility.sourceId || null);
                       setSelectedResponsibility(null);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50/80 hover:bg-rose-100/80 text-rose-800 border border-rose-200/80 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                   >
-                    <Mail className="w-3.5 h-3.5" />
+                    <Mail className="w-3.5 h-3.5 text-rose-500" />
                     View Source in Gmail
                   </button>
                 )}
@@ -2029,9 +2101,9 @@ const MainDashboard: React.FC = () => {
                       setActiveTab('calendar');
                       setSelectedResponsibility(null);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-800 border border-indigo-200/80 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                   >
-                    <CalendarIcon className="w-3.5 h-3.5" />
+                    <CalendarIcon className="w-3.5 h-3.5 text-indigo-500" />
                     View in Calendar
                   </button>
                 )}
@@ -2063,9 +2135,9 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#ebf3fe] via-[#edf3fd] to-[#f6f0fb] flex items-center justify-center">
+      <div className="min-h-screen bg-[#edf2f6] flex items-center justify-center">
         <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-2 border-[#1a68f0] border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="w-10 h-10 border-2 border-[#34515e] border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs font-semibold text-slate-500">Loading LifeSynch AI...</p>
         </div>
       </div>

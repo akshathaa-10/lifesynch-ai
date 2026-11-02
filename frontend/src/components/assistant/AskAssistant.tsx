@@ -743,21 +743,21 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
   };
 
   return (
-    <div className={`rounded-3xl bg-white/90 border border-slate-200/80 shadow-xl backdrop-blur-xl overflow-hidden flex flex-col ${
+    <div className={`rounded-3xl bg-white/95 border border-slate-200/90 shadow-xl backdrop-blur-xl overflow-hidden flex flex-col ${
       compact ? 'max-h-[480px]' : 'min-h-[620px] max-h-[820px]'
     }`}>
       {/* ── 1. Assistant Header ── */}
-      <div className="px-6 py-4 bg-white/80 border-b border-slate-100 flex items-center justify-between gap-4">
+      <div className="px-6 py-4 bg-white border-b border-slate-100 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center shadow-xs text-[#1a68f0] shrink-0">
-            <Sparkles className="w-4 h-4 text-[#1a68f0]" />
+          <div className="w-10 h-10 rounded-full bg-[#e2edf2] border border-[#d2e5ed] flex items-center justify-center shadow-xs text-[#34515e] shrink-0">
+            <Sparkles className="w-5 h-5 text-[#34515e]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                 Ask LifeSynch
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed]">
                 AI Assistant
               </span>
             </div>
@@ -782,7 +782,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
             <button
               onClick={() => onNavigateToTab('assistant')}
               title="Open full view"
-              className="p-2 rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors text-xs flex items-center gap-1 cursor-pointer"
+              className="p-2 rounded-xl text-[#34515e] hover:text-[#283e48] hover:bg-[#e2edf2]/60 transition-colors text-xs flex items-center gap-1 cursor-pointer font-semibold"
             >
               <span className="text-xs font-semibold">Full view</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -795,8 +795,8 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
       <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-5 text-xs sm:text-sm">
         {messages.length === 0 ? (
           <div className="py-8 sm:py-12 px-4 text-center space-y-6 max-w-xl mx-auto">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center mx-auto text-[#1a68f0] shadow-sm">
-              <Bot className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-full bg-[#e2edf2] border border-[#d2e5ed] flex items-center justify-center mx-auto text-[#34515e] shadow-sm">
+              <Bot className="w-6 h-6 text-[#34515e]" />
             </div>
             <div className="space-y-1.5">
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
@@ -818,12 +818,12 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                     key={question}
                     onClick={() => handleSend(question)}
                     disabled={isLoading}
-                    className="p-3.5 rounded-2xl bg-white hover:bg-blue-50/50 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-xs border border-slate-200/80 transition-all cursor-pointer group flex items-center justify-between gap-3 shadow-xs active:scale-[0.99] disabled:opacity-50"
+                    className="p-3.5 rounded-2xl bg-white hover:bg-[#e2edf2]/50 hover:border-[#34515e]/30 text-slate-700 hover:text-[#34515e] text-xs border border-slate-200/90 transition-all cursor-pointer group flex items-center justify-between gap-3 shadow-xs active:scale-[0.99] disabled:opacity-50"
                   >
-                    <span className="font-semibold group-hover:text-blue-700 transition-colors">
+                    <span className="font-semibold group-hover:text-[#34515e] transition-colors">
                       {question}
                     </span>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" />
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#34515e] transition-colors shrink-0" />
                   </button>
                 ))}
               </div>
@@ -842,8 +842,8 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                   <div
                     className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold shadow-2xs ${
                       isUser
-                        ? 'bg-[#1a68f0] text-white font-bold'
-                        : 'bg-blue-50 border border-blue-200 text-[#1a68f0]'
+                        ? 'bg-[#34515e] text-white font-bold'
+                        : 'bg-[#e2edf2] border border-[#d2e5ed] text-[#34515e]'
                     }`}
                   >
                     {isUser ? <UserIcon className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
@@ -853,7 +853,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                   <div
                     className={`max-w-[90%] sm:max-w-[82%] rounded-2xl p-3.5 sm:p-4 text-xs sm:text-sm leading-relaxed transition-all shadow-sm ${
                       isUser
-                        ? 'bg-[#1a68f0] text-white rounded-tr-none shadow-blue-500/10'
+                        ? 'bg-[#34515e] text-white rounded-tr-none shadow-[#34515e]/15'
                         : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
                     }`}
                   >
@@ -866,7 +866,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                     {msg.timestamp && (
                       <div
                         className={`text-xs mt-2.5 text-right ${
-                          isUser ? 'text-blue-100 font-medium' : 'text-slate-400 font-medium'
+                          isUser ? 'text-slate-200 font-medium' : 'text-slate-400 font-medium'
                         }`}
                       >
                         {msg.timestamp}
@@ -879,7 +879,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                 {!isUser && isLatest && !isLoading && (
                   <div className="pt-2 pl-10 space-y-2">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                      <Sparkles className="w-3.5 h-3.5 text-[#1a68f0]" />
+                      <Sparkles className="w-3.5 h-3.5 text-[#34515e]" />
                       <span>Suggested follow-ups</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -891,12 +891,12 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
                           key={suggestion}
                           onClick={() => handleSend(suggestion)}
                           disabled={isLoading}
-                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-xs border border-slate-200 transition-all cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1.5 group disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#e2edf2]/60 hover:border-[#34515e]/30 text-slate-700 hover:text-[#34515e] text-xs border border-slate-200 transition-all cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1.5 group disabled:opacity-50"
                         >
-                          <span className="font-medium group-hover:text-blue-700 transition-colors">
+                          <span className="font-medium group-hover:text-[#34515e] transition-colors">
                             {suggestion}
                           </span>
-                          <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                          <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-[#34515e] transition-colors" />
                         </button>
                       ))}
                     </div>
@@ -910,14 +910,14 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
         {/* Loading state indicator */}
         {isLoading && (
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-[#1a68f0] flex items-center justify-center shrink-0 shadow-xs">
+            <div className="w-8 h-8 rounded-full bg-[#e2edf2] border border-[#d2e5ed] text-[#34515e] flex items-center justify-center shrink-0 shadow-xs">
               <Bot className="w-4 h-4" />
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none p-4 text-xs text-slate-700 flex items-center gap-3 shadow-sm">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#1a68f0] animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-2 h-2 rounded-full bg-[#1a68f0] animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-2 h-2 rounded-full bg-[#1a68f0] animate-bounce" />
+                <span className="w-2 h-2 rounded-full bg-[#34515e] animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-2 h-2 rounded-full bg-[#34515e] animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-2 h-2 rounded-full bg-[#34515e] animate-bounce" />
               </div>
               <span className="text-xs font-medium text-slate-600">
                 LifeSynch is analyzing your schedule and messages...
@@ -930,7 +930,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
       </div>
 
       {/* ── 4. Bottom Input Row & Error Retry ── */}
-      <div className="p-4 bg-white/80 border-t border-slate-100 space-y-2">
+      <div className="p-4 bg-white border-t border-slate-100 space-y-2">
         {error && (
           <div className="px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2 min-w-0">
@@ -958,13 +958,13 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             placeholder="Ask about your responsibilities, schedule, or emails..."
-            className="w-full pl-4 pr-12 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-blue-400 focus:bg-white focus:ring-1 focus:ring-blue-400/50 text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none transition-all disabled:opacity-50 shadow-inner"
+            className="w-full pl-4 pr-12 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#34515e] focus:bg-white focus:ring-1 focus:ring-[#34515e]/30 text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none transition-all disabled:opacity-50 shadow-inner"
           />
           <button
             onClick={() => handleSend()}
             disabled={!inputQuestion.trim() || isLoading}
             aria-label="Send question"
-            className="absolute right-1.5 p-2 rounded-xl bg-[#1a68f0] hover:bg-[#1557cc] text-white font-semibold disabled:opacity-40 disabled:hover:bg-[#1a68f0] transition-all cursor-pointer shadow-sm disabled:cursor-not-allowed"
+            className="absolute right-1.5 p-2 rounded-xl bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white font-semibold disabled:opacity-40 transition-all cursor-pointer shadow-sm disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>

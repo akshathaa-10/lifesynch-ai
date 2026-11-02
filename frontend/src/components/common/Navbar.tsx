@@ -5,9 +5,9 @@ import {
   Bell, 
   Check, 
   Clock, 
-  ChevronDown, 
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Search
 } from 'lucide-react';
 import { User, ReminderNotification } from '@lifesynch/shared';
 
@@ -65,63 +65,75 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="h-14 border-b border-slate-200/70 bg-white/75 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 select-none">
-      {/* Brand & Wordmark */}
+    <header className="h-16 bg-[#34515e] border-b border-[#283e48] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 select-none shadow-sm">
+      {/* Brand & Wordmark matching deep teal header */}
       <div className="flex items-center gap-3">
         <div 
           onClick={() => onNavigateToTab?.('dashboard')}
-          className="flex items-center gap-2 cursor-pointer group"
+          className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#1a68f0] group-hover:scale-125 transition-transform shadow-sm shadow-blue-500/50" />
-          <span className="font-bold tracking-tight text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
-            <span>LifeSynch</span>
-            <span className="text-[#1a68f0] text-xs">✦</span>
-          </span>
+          <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white border border-white/15 group-hover:scale-105 transition-transform">
+            <Sparkles className="w-4 h-4 text-sky-300" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold tracking-tight text-white text-base leading-none">
+              LifeSynch
+            </span>
+            <span className="text-[10px] text-slate-300 font-medium tracking-wide mt-0.5">
+              Personal Intelligence
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Right Controls: Sync status, Notifications, Ask Assistant, User */}
+      {/* Right Controls: Search pill, Sync status, Notifications, Ask Assistant, User */}
       <div className="flex items-center gap-2.5 sm:gap-3.5">
         
+        {/* Search Pill matching reference design */}
+        <div 
+          onClick={() => onNavigateToTab?.('assistant')}
+          className="hidden md:flex items-center gap-2 bg-white/95 hover:bg-white text-slate-700 px-3.5 py-1.5 rounded-full text-xs shadow-xs transition-all cursor-pointer w-44 lg:w-56"
+          title="Search or Ask AI"
+        >
+          <Search className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-slate-400 truncate">Search records...</span>
+        </div>
+
         {/* Sync Status Pill */}
         {backendConnected === false || Boolean(syncError) ? (
           <div 
             title={syncError || 'Backend unreachable. Synchronization paused.'}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-300/30 text-xs text-rose-200 font-medium"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
             <span>Sync Paused</span>
           </div>
-        ) : (
+        ) : isSyncing ? (
           <div 
             onClick={onTriggerSync}
-            title="Automatic background sync active (Google Calendar & Gmail)"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-700 font-medium hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+            title="Automatic background sync in progress"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs text-white font-medium hover:bg-white/20 transition-colors cursor-pointer shadow-xs"
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-            <span>{isSyncing ? 'Syncing...' : 'Active'}</span>
-            {isSyncing ? (
-              <RefreshCw className="w-3 h-3 text-slate-400 animate-spin" />
-            ) : (
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            )}
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span>Syncing...</span>
+            <RefreshCw className="w-3 h-3 text-white/70 animate-spin" />
           </div>
-        )}
+        ) : null}
 
-        {/* Notifications Bell with popover */}
+        {/* Notifications Bell with popover matching reference header */}
         <div className="relative" ref={notificationsRef}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className={`p-2 rounded-xl border transition-colors relative cursor-pointer ${
+            className={`p-2 rounded-xl transition-colors relative cursor-pointer ${
               showNotifications 
-                ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 shadow-xs'
+                ? 'bg-white/20 text-white' 
+                : 'text-white/85 hover:text-white hover:bg-white/10'
             }`}
             title="Notifications & Deadline Reminders"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1a68f0] text-white text-[11px] font-bold flex items-center justify-center leading-none shadow-sm">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-sm">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -132,7 +144,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white border border-slate-200/90 shadow-2xl p-3.5 z-50 text-xs space-y-2.5">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Bell className="w-3.5 h-3.5 text-[#1a68f0]" />
+                  <Bell className="w-3.5 h-3.5 text-[#34515e]" />
                   Notifications & Reminders
                 </span>
                 <span className="text-[11px] text-slate-500 font-medium">
@@ -153,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className={`p-3 rounded-xl border transition-all ${
                         r.isRead
                           ? 'bg-slate-50 border-slate-100 text-slate-500'
-                          : 'bg-blue-50/60 border-blue-100 text-slate-800'
+                          : 'bg-sky-50/60 border-sky-100 text-slate-800'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -174,7 +186,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           <button
                             onClick={() => onMarkReminderAsRead(r.id)}
                             title="Mark as read"
-                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors shrink-0"
+                            className="p-1 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 cursor-pointer transition-colors shrink-0"
                           >
                             <Check className="w-3 h-3" />
                           </button>
@@ -192,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       setShowNotifications(false);
                       onNavigateToTab('tasks');
                     }}
-                    className="text-xs text-[#1a68f0] hover:text-[#1557cc] font-semibold cursor-pointer"
+                    className="text-xs text-sky-700 hover:text-sky-800 font-semibold cursor-pointer"
                   >
                     View all in Responsibilities →
                   </button>
@@ -202,33 +214,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* "Ask LifeSynch" Button */}
+        {/* "Ask LifeSynch" Button with soft blue gradient matching reference */}
         <button
           onClick={() => onNavigateToTab?.('assistant')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100/80 text-[#1a68f0] border border-blue-200/80 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
         >
-          <Sparkles className="w-3.5 h-3.5 text-[#1a68f0]" />
-          <span className="hidden sm:inline">Ask LifeSynch</span>
+          <Sparkles className="w-3.5 h-3.5 text-white" />
+          <span className="hidden sm:inline">Ask AI</span>
         </button>
 
-        {/* User Profile & Sign Out */}
+        {/* User Profile Card matching top-right card from reference design */}
         {user ? (
-          <div className="flex items-center gap-2 pl-1 border-l border-slate-200">
+          <div className="flex items-center gap-2 bg-white rounded-2xl px-3 py-1.5 shadow-sm text-slate-800 border border-white/20">
             <div className="flex items-center gap-2 text-xs">
               {user.picture ? (
                 <img
                   src={user.picture}
                   alt={user.name || user.email}
-                  className="w-7 h-7 rounded-full border border-blue-200 object-cover"
+                  className="w-7 h-7 rounded-full border border-slate-200 object-cover"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-[11px] font-bold text-blue-700">
+                <div className="w-7 h-7 rounded-full bg-[#e2edf2] text-[#34515e] border border-slate-200 flex items-center justify-center text-[11px] font-bold">
                   {getInitials(user.name, user.email)}
                 </div>
               )}
-              <div className="hidden xl:block text-left">
-                <div className="text-xs font-semibold text-slate-800 leading-tight">
-                  {user.name ? user.name.split(' ')[0] : user.email.split('@')[0]}
+              <div className="hidden sm:block text-left">
+                <div className="text-xs font-bold text-slate-900 leading-tight">
+                  {user.name || 'User'}
+                </div>
+                <div className="text-[10px] text-slate-400 leading-tight truncate max-w-[120px] mt-0.5">
+                  id: {user.email}
                 </div>
               </div>
             </div>
@@ -236,7 +251,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onLogout}
               title="Sign Out"
-              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-0.5"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>

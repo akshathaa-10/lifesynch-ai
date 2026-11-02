@@ -8,16 +8,15 @@ export const LoginPage: React.FC = () => {
   const { loginWithGoogle, isLoading, error } = useAuth();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#ebf3fe] via-[#edf3fd] to-[#f6f0fb] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden text-slate-800">
-      {/* Background soft pastel glow orbs */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-blue-400/10 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-[350px] h-[350px] bg-purple-400/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-[#edf2f6] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden text-slate-800">
+      {/* Background soft teal glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-[#34515e]/5 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="max-w-md w-full relative z-10 space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#1a68f0] to-[#60a5fa] items-center justify-center shadow-lg shadow-blue-500/20 mb-1">
-            <Sparkles className="w-6 h-6 text-white" />
+          <div className="inline-flex w-14 h-14 rounded-2xl bg-[#34515e] border border-[#283e48] items-center justify-center shadow-lg shadow-[#34515e]/20 mb-1">
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             LifeSynch AI
@@ -28,7 +27,7 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Login Card */}
-        <Card className="p-7 space-y-6 border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-2xl rounded-3xl">
+        <Card className="p-7 space-y-6 border-slate-200/90 bg-white shadow-xl rounded-3xl">
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -46,7 +45,7 @@ export const LoginPage: React.FC = () => {
               onClick={loginWithGoogle}
               isLoading={isLoading}
               variant="outline"
-              className="w-full py-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold flex items-center justify-center gap-3 shadow-sm hover:shadow-md transition-all rounded-2xl"
+              className="w-full py-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold flex items-center justify-center gap-3 shadow-xs hover:shadow-sm transition-all rounded-2xl cursor-pointer"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -90,9 +89,9 @@ export const LoginPage: React.FC = () => {
         </Card>
 
         {/* Security architecture footer */}
-        <div className="p-4 rounded-2xl bg-white/80 border border-slate-200/80 text-xs text-slate-500 space-y-1.5 shadow-xs">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 text-xs text-slate-500 space-y-1.5 shadow-xs">
           <div className="flex items-center gap-2 font-semibold text-slate-700">
-            <Key className="w-3.5 h-3.5 text-[#1a68f0]" />
+            <Key className="w-3.5 h-3.5 text-[#34515e]" />
             <span>Phase 1 Security Architecture</span>
           </div>
           <p>

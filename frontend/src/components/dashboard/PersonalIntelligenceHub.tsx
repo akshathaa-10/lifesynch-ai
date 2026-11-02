@@ -43,6 +43,7 @@ interface PersonalIntelligenceHubProps {
   tasks: Responsibility[];
   emails: EmailRecord[];
   calendarEvents: CalendarEventRecord[];
+  isLoading?: boolean;
   onSelectResponsibility: (item: Responsibility) => void;
   onSelectEmail: (emailId: string) => void;
   onSelectCalendarEvent?: (eventId: string) => void;
@@ -55,6 +56,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
   tasks,
   emails,
   calendarEvents,
+  isLoading = false,
   onSelectResponsibility,
   onSelectEmail,
   onSelectCalendarEvent,
@@ -209,7 +211,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
     const renderSectionBlock = (
       sectionKey: ResponsibilitySection,
       sectionTitle: string,
-      badgeStyle: string,
+      _badgeStyle: string,
       icon: React.ReactNode,
       description: string,
       sectionItems: Array<ClassifiedLifeItem & { formattedScheduleText: string }>
@@ -222,82 +224,102 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
 
       return (
         <div key={sectionKey} id={sectionId} className="space-y-3 scroll-mt-6">
-          {/* Section Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
-            <div className="flex items-center gap-3">
-              <span className={`text-xs font-bold px-3 py-1 rounded-xl border uppercase tracking-wider flex items-center gap-1.5 shadow-xs ${badgeStyle}`}>
-                {icon}
-                <span>{sectionTitle}</span>
-              </span>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                {sectionItems.length}
-              </span>
+          {/* Section Items Table with Deep Teal Table Header Banner matching reference design */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-sm">
+            {/* Deep Teal Table Header Banner */}
+            <div className="bg-[#34515e] px-4 sm:px-5 py-3.5 flex items-center justify-between text-white border-b border-[#2a434e]">
+              <div className="flex items-center gap-2.5">
+                <span className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+                  {icon}
+                  <span>{sectionTitle}</span>
+                </span>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+                  {sectionItems.length}
+                </span>
+              </div>
+              <p className="hidden sm:block text-xs text-slate-200/90 font-normal">{description}</p>
             </div>
-            <p className="text-xs text-slate-500">{description}</p>
-          </div>
 
-          {/* Section Items Table */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-sm">
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse table-fixed">
                 <thead>
-                  <tr className="border-b border-slate-200/80 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3 px-4 w-[36%]">Event / Responsibility</th>
-                    <th className="py-3 px-4 w-[28%]">Action Required / Summary</th>
-                    <th className="py-3 px-4 w-[22%]">Deadline / Date & Time</th>
-                    <th className="py-3 px-4 w-[14%] text-right">Source</th>
+                  <tr className="border-b border-slate-200 bg-[#f0f5f8] text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="py-3 px-4 w-[36%] text-left font-bold">Event / Responsibility</th>
+                    <th className="py-3 px-4 w-[26%] text-left font-bold">Action Required / Summary</th>
+                    <th className="py-3 px-4 w-[22%] text-left font-bold">Deadline / Date & Time</th>
+                    <th className="py-3 px-4 w-[16%] text-right font-bold">Source</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {sectionItems.map(item => {
                     const formattedDate = item.formattedScheduleText;
-                    let dateColor = 'text-slate-700';
-                    if (formattedDate === 'No deadline') {
-                      dateColor = 'text-slate-400';
-                    } else if (sectionKey === 'yourDay') {
-                      dateColor = 'text-amber-700 font-semibold';
-                    } else if (sectionKey === 'passed') {
-                      dateColor = 'text-rose-600 font-medium';
-                    } else if (sectionKey === 'upcoming') {
-                      dateColor = item.itemType === 'event' ? 'text-sky-700 font-medium' : 'text-indigo-700 font-medium';
-                    } else if (sectionKey === 'informative') {
-                      dateColor = 'text-slate-500';
-                    }
-
                     const conciseAction = item.rawResponsibility?.sourceContext?.nextStep || item.rawResponsibility?.action;
+
+                    const renderDateStatus = () => {
+                      if (formattedDate === 'No deadline') {
+                        return <span className="text-slate-400">{formattedDate}</span>;
+                      }
+                      if (sectionKey === 'passed') {
+                        return (
+                          <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                            <span>{formattedDate}</span>
+                          </span>
+                        );
+                      }
+                      if (sectionKey === 'yourDay') {
+                        return (
+                          <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                            <span>{formattedDate}</span>
+                          </span>
+                        );
+                      }
+                      if (sectionKey === 'upcoming') {
+                        return (
+                          <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                            <span>{formattedDate}</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-slate-500 font-medium">{formattedDate}</span>
+                      );
+                    };
 
                     return (
                       <tr
                         key={item.id}
                         onClick={() => handleItemClick(item)}
-                        className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        className="group hover:bg-slate-50/70 transition-colors cursor-pointer"
                       >
                         {/* Column 1: Event / Responsibility */}
                         <td className="py-3.5 px-4 align-top">
                           <div className="flex items-start gap-2.5">
                             <div className="shrink-0 mt-0.5">
                               {item.itemType === 'event' ? (
-                                <div className="w-4 h-4 rounded-full bg-sky-100 border border-sky-300 flex items-center justify-center text-sky-700 text-[9px] font-bold" title="Event / Commitment">
+                                <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs" title="Event / Commitment">
                                   <CalendarIcon className="w-2.5 h-2.5" />
                                 </div>
                               ) : item.itemType === 'application' ? (
-                                <div className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 text-[9px] font-bold" title="Opportunity / Window">
+                                <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs" title="Opportunity / Window">
                                   W
                                 </div>
                               ) : (
-                                <div className="w-4 h-4 rounded-full bg-blue-100 border border-blue-300 flex items-center justify-center text-blue-700 text-[9px] font-bold">
+                                <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold shadow-2xs">
                                   •
                                 </div>
                               )}
                             </div>
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                              <h3 className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <h3 className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
                                 {item.title}
                               </h3>
-                              <div className="flex items-center gap-2 text-xs text-slate-400">
+                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
                                 {item.sender && (
-                                  <span className="truncate max-w-[180px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>
+                                  <span className="truncate max-w-[170px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>
                                 )}
                                 {item.location && (
                                   <span className="truncate max-w-[140px]">· {item.location}</span>
@@ -310,72 +332,78 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                         {/* Column 2: Action Required / Summary */}
                         <td className="py-3.5 px-4 align-top">
                           {conciseAction ? (
-                            <div className="flex items-start gap-1.5 text-xs text-blue-700 font-medium pt-0.5">
-                              <ArrowRight className="w-3 h-3 text-blue-500 shrink-0 mt-0.5" />
-                              <span className="leading-snug line-clamp-2">{conciseAction}</span>
+                            <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug">
+                              <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                              <span className="leading-snug line-clamp-2 font-medium">{conciseAction}</span>
                             </div>
                           ) : item.summary ? (
-                            <p className="text-slate-600 text-xs line-clamp-2 pt-0.5">{item.summary}</p>
+                            <p className="text-slate-600 text-xs leading-snug line-clamp-2">{item.summary}</p>
                           ) : sectionKey === 'informative' ? (
-                            <span className="text-slate-500 text-xs pt-0.5 block">No action required</span>
+                            <span className="text-slate-400 text-xs leading-snug block">No action required</span>
                           ) : (
-                            <span className="text-slate-400 text-xs italic pt-0.5 block">Review responsibility</span>
+                            <span className="text-slate-400 text-xs italic leading-snug block">Review responsibility</span>
                           )}
                         </td>
 
                         {/* Column 3: Deadline / Date & Time */}
                         <td className="py-3.5 px-4 align-top">
-                          <span className={`text-xs ${dateColor}`}>
-                            {formattedDate}
-                          </span>
+                          <div className="text-xs leading-snug">
+                            {renderDateStatus()}
+                          </div>
                         </td>
 
                         {/* Column 4: Source (Clean: only Gmail or Calendar) */}
                         <td className="py-3.5 px-4 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                          {item.rawResponsibility?.source === 'both' ? (
-                            <div className="inline-flex items-center gap-1.5 justify-end">
+                          <div className="flex items-center justify-end whitespace-nowrap">
+                            {item.rawResponsibility?.source === 'both' ? (
+                              <div className="inline-flex items-center gap-1.5 justify-end whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.sourceId) onSelectEmail(item.sourceId);
+                                    else handleItemClick(item);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
+                                  title="Gmail"
+                                >
+                                  <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
+                                  <span>Gmail</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleItemClick(item)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
+                                  title="Calendar"
+                                >
+                                  <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
+                                  <span>Calendar</span>
+                                </button>
+                              </div>
+                            ) : (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar') ? (
+                              <button
+                                type="button"
+                                onClick={() => handleItemClick(item)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
+                                title="Calendar"
+                              >
+                                <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
+                                <span>Calendar</span>
+                              </button>
+                            ) : (
                               <button
                                 type="button"
                                 onClick={() => {
                                   if (item.sourceId) onSelectEmail(item.sourceId);
                                   else handleItemClick(item);
                                 }}
-                                className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
                                 title="Gmail"
                               >
-                                Gmail
+                                <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
+                                <span>Gmail</span>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleItemClick(item)}
-                                className="px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition-colors cursor-pointer"
-                                title="Calendar"
-                              >
-                                Calendar
-                              </button>
-                            </div>
-                          ) : (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar') ? (
-                            <button
-                              type="button"
-                              onClick={() => handleItemClick(item)}
-                              className="px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition-colors cursor-pointer"
-                              title="Calendar"
-                            >
-                              Calendar
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (item.sourceId) onSelectEmail(item.sourceId);
-                                else handleItemClick(item);
-                              }}
-                              className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
-                              title="Gmail"
-                            >
-                              Gmail
-                            </button>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -390,37 +418,87 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                 const formattedDate = item.formattedScheduleText;
                 const conciseAction = item.rawResponsibility?.sourceContext?.nextStep || item.rawResponsibility?.action;
 
+                const renderMobileDate = () => {
+                  if (formattedDate === 'No deadline') {
+                    return <span className="text-slate-400">{formattedDate}</span>;
+                  }
+                  if (sectionKey === 'passed') {
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                        <span>{formattedDate}</span>
+                      </span>
+                    );
+                  }
+                  if (sectionKey === 'yourDay') {
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                        <span>{formattedDate}</span>
+                      </span>
+                    );
+                  }
+                  if (sectionKey === 'upcoming') {
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                        <span>{formattedDate}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-slate-500 font-medium">{formattedDate}</span>
+                  );
+                };
+
                 return (
                   <div
                     key={item.id}
                     onClick={() => handleItemClick(item)}
-                    className="p-3.5 hover:bg-slate-50 transition-colors cursor-pointer space-y-2.5"
+                    className="p-4 hover:bg-slate-50/70 transition-colors cursor-pointer space-y-2.5"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <h3 className="text-xs font-semibold text-slate-800 leading-snug line-clamp-2">
-                          {item.title}
-                        </h3>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
-                          <span>{formattedDate}</span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div className="shrink-0 mt-0.5">
+                          {item.itemType === 'event' ? (
+                            <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs" title="Event / Commitment">
+                              <CalendarIcon className="w-2.5 h-2.5" />
+                            </div>
+                          ) : item.itemType === 'application' ? (
+                            <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs" title="Opportunity / Window">
+                              W
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold shadow-2xs">
+                              •
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <h3 className="text-xs font-semibold text-slate-900 leading-snug line-clamp-2">
+                            {item.title}
+                          </h3>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                            {item.sender && <span className="truncate max-w-[150px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>}
+                          </div>
                         </div>
                       </div>
-                      <div className="shrink-0" onClick={e => e.stopPropagation()}>
+                      <div className="shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
                         {item.rawResponsibility?.source === 'both' ? (
                           <div className="inline-flex items-center gap-1">
-                            <span className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                            <span className="px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200/70 text-rose-800 text-[11px] font-semibold">
                               Gmail
                             </span>
-                            <span className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold">
+                            <span className="px-2 py-0.5 rounded-lg bg-indigo-50/80 border border-indigo-200/70 text-indigo-800 text-[11px] font-semibold">
                               Calendar
                             </span>
                           </div>
                         ) : (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar') ? (
-                          <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold">
+                          <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50/80 border border-indigo-200/70 text-indigo-800 text-[11px] font-semibold">
                             Calendar
                           </span>
                         ) : (
-                          <span className="inline-block px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                          <span className="inline-block px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200/70 text-rose-800 text-[11px] font-semibold">
                             Gmail
                           </span>
                         )}
@@ -428,21 +506,26 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                     </div>
 
                     {conciseAction ? (
-                      <div className="text-xs text-blue-700 font-medium flex items-start gap-1">
+                      <div className="text-xs text-slate-800 font-medium flex items-start gap-1.5 pl-6.5">
                         <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
                         <span className="line-clamp-2">{conciseAction}</span>
                       </div>
                     ) : item.summary ? (
-                      <p className="text-xs text-slate-600 line-clamp-2">{item.summary}</p>
+                      <p className="text-xs text-slate-600 line-clamp-2 pl-6.5">{item.summary}</p>
                     ) : null}
 
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-100" onClick={e => e.stopPropagation()}>
+                    {/* Deadline in Mobile View */}
+                    <div className="text-xs pl-6.5 pt-0.5">
+                      {renderMobileDate()}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs text-slate-500">Category:</span>
                         <select
                           value={item.category}
                           onChange={(e) => handleCategoryChange(item, e.target.value as LifeCategoryId)}
-                          className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs text-slate-700 cursor-pointer shadow-xs"
+                          className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs text-slate-700 cursor-pointer shadow-2xs hover:border-slate-300"
                         >
                           <option value="academic">Academic</option>
                           <option value="career">Career</option>
@@ -453,7 +536,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                       </div>
                       <button
                         onClick={() => handleItemClick(item)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 cursor-pointer"
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors"
                       >
                         <span>{item.rawResponsibility ? 'View Details' : 'View Source'}</span>
                         <ChevronRight className="w-3.5 h-3.5" />
@@ -503,36 +586,24 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           </div>
         </div>
 
-        {/* Section Indicators - Clean 4-card overview matching the pastel theme */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Section Indicators - Clean 4-card overview matching reference design */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           {/* 1. Your Day */}
           <button
             type="button"
             onClick={() => scrollToSection('section-your-day')}
-            className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs ${
-              categorySectionCounts.yourDay > 0
-                ? 'bg-amber-50/80 border-amber-200 hover:bg-amber-100/70'
-                : 'bg-white border-slate-200 hover:bg-slate-50'
-            }`}
+            className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                categorySectionCounts.yourDay > 0
-                  ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                  : 'bg-slate-100 text-slate-500 border border-slate-200'
-              }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-800 tracking-wider truncate">YOUR DAY</div>
-                <div className="text-xs text-slate-500 truncate">Due today</div>
+                <div className="text-xs font-bold text-slate-900 tracking-wide truncate">YOUR DAY</div>
+                <div className="text-[11px] text-slate-500 truncate">Due today</div>
               </div>
             </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-              categorySectionCounts.yourDay > 0
-                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}>
+            <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
               {categorySectionCounts.yourDay}
             </span>
           </button>
@@ -541,30 +612,18 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           <button
             type="button"
             onClick={() => scrollToSection('section-upcoming')}
-            className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs ${
-              categorySectionCounts.upcoming > 0
-                ? 'bg-indigo-50/80 border-indigo-200 hover:bg-indigo-100/70'
-                : 'bg-white border-slate-200 hover:bg-slate-50'
-            }`}
+            className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                categorySectionCounts.upcoming > 0
-                  ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                  : 'bg-slate-100 text-slate-500 border border-slate-200'
-              }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                 <CalendarIcon className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-800 tracking-wider truncate">UPCOMING</div>
-                <div className="text-xs text-slate-500 truncate">Tomorrow & future</div>
+                <div className="text-xs font-bold text-slate-900 tracking-wide truncate">UPCOMING</div>
+                <div className="text-[11px] text-slate-500 truncate">Tomorrow & future</div>
               </div>
             </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-              categorySectionCounts.upcoming > 0
-                ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}>
+            <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
               {categorySectionCounts.upcoming}
             </span>
           </button>
@@ -573,22 +632,18 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           <button
             type="button"
             onClick={() => scrollToSection('section-passed')}
-            className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs ${
-              categorySectionCounts.passed > 0
-                ? 'bg-slate-100/80 border-slate-300 hover:bg-slate-200/70'
-                : 'bg-white border-slate-200 hover:bg-slate-50'
-            }`}
+            className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-800 tracking-wider truncate">PASSED</div>
-                <div className="text-xs text-slate-500 truncate">Past deadlines</div>
+                <div className="text-xs font-bold text-slate-900 tracking-wide truncate">PASSED</div>
+                <div className="text-[11px] text-slate-500 truncate">Past deadlines</div>
               </div>
             </div>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
+            <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
               {categorySectionCounts.passed}
             </span>
           </button>
@@ -597,30 +652,18 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           <button
             type="button"
             onClick={() => scrollToSection('section-informative')}
-            className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs ${
-              categorySectionCounts.informative > 0
-                ? 'bg-teal-50/80 border-teal-200 hover:bg-teal-100/70'
-                : 'bg-white border-slate-200 hover:bg-slate-50'
-            }`}
+            className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-sm text-left flex items-center justify-between gap-3 transition-all cursor-pointer shadow-xs"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                categorySectionCounts.informative > 0
-                  ? 'bg-teal-100 text-teal-700 border border-teal-200'
-                  : 'bg-slate-100 text-slate-500 border border-slate-200'
-              }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center shrink-0">
                 <Mail className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-800 tracking-wider truncate">INFORMATIVE</div>
-                <div className="text-xs text-slate-500 truncate">No action required</div>
+                <div className="text-xs font-bold text-slate-900 tracking-wide truncate">INFORMATIVE</div>
+                <div className="text-[11px] text-slate-500 truncate">No action needed</div>
               </div>
             </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-              categorySectionCounts.informative > 0
-                ? 'bg-teal-100 text-teal-800 border-teal-300'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}>
+            <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
               {categorySectionCounts.informative}
             </span>
           </button>
@@ -711,77 +754,95 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
         </div>
 
         {/* 4 Primary Category Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {(['academic', 'career', 'personal', 'finance'] as LifeCategoryId[]).map(catId => {
-            const meta = LIFE_CATEGORIES[catId];
-            const count = counts[catId] || 0;
-
-            return (
+        {isLoading && tasks.length === 0 && emails.length === 0 && calendarEvents.length === 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(idx => (
               <div
-                key={catId}
-                onClick={() => setActiveCategory(catId)}
-                className={`p-5 rounded-2xl border border-slate-200/80 bg-gradient-to-b ${meta.gradientBg} ${meta.borderHover} transition-all duration-200 cursor-pointer group flex flex-col justify-between space-y-4 hover:-translate-y-0.5 shadow-sm hover:shadow-md`}
+                key={idx}
+                className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-4 animate-pulse"
               >
                 <div className="space-y-3">
-                  {/* Icon & Count */}
                   <div className="flex items-center justify-between">
-                    <div className={`p-2.5 rounded-xl border ${meta.badgeBg}`}>
-                      <span className={meta.badgeText}>
-                        {renderCategoryIcon(meta.id, 'w-5 h-5')}
-                      </span>
-                    </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${meta.badgeBg} ${meta.badgeText}`}>
-                      {count} {count === 1 ? 'item' : 'items'}
-                    </span>
+                    <div className="w-10 h-10 rounded-full bg-slate-100" />
+                    <div className="w-16 h-5 rounded-full bg-slate-100" />
                   </div>
-
-                  {/* Title & Description */}
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                      {meta.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mt-1 line-clamp-2">
-                      {meta.shortDescription}
-                    </p>
+                  <div className="space-y-2 pt-1">
+                    <div className="w-28 h-5 rounded-md bg-slate-100" />
+                    <div className="w-full h-8 rounded-md bg-slate-50" />
                   </div>
                 </div>
-
-                {/* Footer Link */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-500 group-hover:text-slate-900 transition-colors">
-                  <span>Explore category</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                  <div className="w-24 h-3.5 rounded bg-slate-100" />
+                  <div className="w-4 h-4 rounded bg-slate-100" />
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {(['academic', 'career', 'personal', 'finance'] as LifeCategoryId[]).map(catId => {
+              const meta = LIFE_CATEGORIES[catId];
+              const count = counts[catId] || 0;
+
+              return (
+                <div
+                  key={catId}
+                  onClick={() => setActiveCategory(catId)}
+                  className="p-5 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between space-y-4 hover:-translate-y-0.5 shadow-xs"
+                >
+                  <div className="space-y-3">
+                    {/* Icon & Count matching reference circular badges */}
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d0e2ec] flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform">
+                        {renderCategoryIcon(meta.id, 'w-5 h-5')}
+                      </div>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        {count} {count === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+
+                    {/* Title & Description */}
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#34515e] transition-colors">
+                        {meta.name}
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed mt-1 line-clamp-2">
+                        {meta.shortDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Footer Link */}
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-500 group-hover:text-[#34515e] transition-colors">
+                    <span>Explore category</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* General & Other Row Card */}
         <div
           onClick={() => setActiveCategory('general')}
-          className="p-4 rounded-2xl border border-slate-200/80 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer group flex items-center justify-between gap-4 shadow-sm"
+          className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between gap-4 shadow-xs"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 shrink-0">
+            <div className="w-10 h-10 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d0e2ec] flex items-center justify-center shrink-0 shadow-2xs">
               <Compass className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                  General & Other
-                </h4>
-                <span className="text-xs text-slate-400">·</span>
-                <span className="text-xs text-slate-500 font-medium">
-                  {counts.general || 0} unique items
-                </span>
-              </div>
+              <h4 className="text-xs font-bold text-slate-900 group-hover:text-[#34515e] transition-colors">
+                General & Other
+              </h4>
               <p className="text-xs text-slate-500 truncate">
                 Club communications, newsletters, community updates, and items pending specific categorization.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 text-xs font-semibold text-slate-500 group-hover:text-slate-900 shrink-0">
+          <div className="flex items-center gap-1 text-xs font-semibold text-slate-500 group-hover:text-[#34515e] shrink-0">
             <span>View all</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </div>
@@ -789,13 +850,44 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
       </section>
 
       {/* ================= 4. WORTH KNOWING – INTELLIGENT DISCOVERIES ================= */}
-      {worthKnowing.length > 0 && (
+      {isLoading && tasks.length === 0 && emails.length === 0 && calendarEvents.length === 0 ? (
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Worth Knowing
+            </h2>
+            <p className="text-xs text-slate-500">
+              Genuinely useful opportunities, programs, and updates surfaced by AI.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[1, 2].map(idx => (
+              <div
+                key={idx}
+                className="p-4 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-3 animate-pulse"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="w-20 h-5 rounded-lg bg-slate-100" />
+                  <div className="w-14 h-4 rounded bg-slate-100" />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="w-3/4 h-5 rounded bg-slate-100" />
+                  <div className="w-full h-8 rounded bg-slate-50" />
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="w-20 h-3.5 rounded bg-slate-100" />
+                  <div className="w-4 h-4 rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : worthKnowing.length > 0 ? (
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Worth Knowing</span>
-                <span className="text-xs font-normal text-slate-400">· Intelligent Discoveries</span>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                Worth Knowing
               </h2>
               <p className="text-xs text-slate-500">
                 Genuinely useful opportunities, programs, and updates surfaced by AI.
@@ -810,17 +902,19 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                 <div
                   key={wk.id}
                   onClick={() => handleDiscoveryClick(wk)}
-                  className="p-4 rounded-2xl border border-slate-200/80 bg-white hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between space-y-3 shadow-xs"
+                  className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-[#34515e]/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between space-y-3 shadow-xs"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider ${meta.badgeBg} ${meta.badgeText}`}>
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg border border-[#c2dde6] bg-[#e2edf2] text-[#34515e] uppercase tracking-wider">
                           {meta.name.split(' ')[0]}
                         </span>
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 uppercase tracking-wider">
-                          {wk.badgeLabel}
-                        </span>
+                        {wk.badgeLabel && !wk.badgeLabel.toLowerCase().includes('connected') && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 uppercase tracking-wider">
+                            {wk.badgeLabel}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -832,7 +926,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                           <button
                             type="button"
                             onClick={() => handleDiscoveryClick(wk)}
-                            className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
+                            className="text-xs font-semibold text-slate-600 hover:text-[#34515e] transition-colors cursor-pointer"
                             title="Google Calendar"
                           >
                             Calendar
@@ -844,7 +938,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                               if (wk.sourceId) onSelectEmail(wk.sourceId);
                               else handleDiscoveryClick(wk);
                             }}
-                            className="text-xs font-semibold text-rose-700 hover:text-rose-800 transition-colors cursor-pointer"
+                            className="text-xs font-semibold text-slate-600 hover:text-[#34515e] transition-colors cursor-pointer"
                             title="Gmail"
                           >
                             Gmail
@@ -853,7 +947,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                       </div>
                     </div>
 
-                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#34515e] transition-colors line-clamp-2 leading-snug">
                       {wk.title}
                     </h3>
 
@@ -862,11 +956,9 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                     </p>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 group-hover:text-blue-600 font-semibold transition-colors">
-                    <span className="text-xs text-slate-400 group-hover:text-slate-600">
-                      {wk.relatedCount && wk.relatedCount > 1 
-                        ? `${wk.relatedCount} connected communications` 
-                        : 'Open source'}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 group-hover:text-[#34515e] font-semibold transition-colors">
+                    <span className="text-xs text-slate-400 group-hover:text-[#34515e]">
+                      Open source
                     </span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </div>
@@ -875,13 +967,13 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
             })}
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* ================= 5. LIFESYNCH AI ENTRY POINT ================= */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 space-y-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1a68f0]">
+            <div className="w-9 h-9 rounded-xl bg-[#e2edf2] border border-[#c2dde6] flex items-center justify-center text-[#34515e]">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
@@ -906,27 +998,27 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
             <button
               key={q}
               onClick={() => onAskQuestion(q)}
-              className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/60 text-xs text-slate-700 hover:text-blue-700 font-medium transition-all text-left cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              className="px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 hover:border-[#34515e]/40 hover:bg-[#e2edf2]/60 text-xs text-slate-700 hover:text-[#34515e] font-medium transition-all text-left cursor-pointer flex items-center gap-1.5 shadow-2xs"
             >
-              <HelpCircle className="w-3 h-3 text-[#1a68f0] shrink-0" />
+              <HelpCircle className="w-3 h-3 text-[#34515e] shrink-0" />
               <span>{q}</span>
             </button>
           ))}
         </div>
 
-        {/* Quick Inquiry Bar */}
+        {/* Quick Inquiry Bar with blue gradient button */}
         <form onSubmit={handleInquirySubmit} className="relative pt-1">
           <input
             type="text"
             value={customInquiry}
             onChange={(e) => setCustomInquiry(e.target.value)}
             placeholder="Ask anything about your courses, placements, deadlines, or schedule..."
-            className="w-full pl-4 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:bg-white transition-all shadow-inner"
+            className="w-full pl-4 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#34515e] focus:bg-white transition-all shadow-inner"
           />
           <button
             type="submit"
             disabled={!customInquiry.trim()}
-            className="absolute right-2 top-1/2 -translate-y-1/2 px-3.5 py-1.5 rounded-xl bg-[#1a68f0] hover:bg-[#1557cc] disabled:opacity-40 disabled:hover:bg-[#1a68f0] text-white font-bold text-xs transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 disabled:opacity-40 text-white font-bold text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs"
           >
             <span>Ask</span>
             <Send className="w-3 h-3" />
