@@ -162,6 +162,7 @@ export const apiClient = {
   }>('/api/v1/sync/status'),
   syncGmail: () => request<GmailSyncSummary>('/api/v1/sync/gmail', { method: 'POST' }),
   getEmails: (limit = 50) => request<EmailRecord[]>(`/api/v1/sync/emails?limit=${limit}`),
+  getSpamEmails: (limit = 100) => request<EmailRecord[]>(`/api/v1/sync/spam?limit=${limit}`),
   syncCalendar: () => request<CalendarSyncSummary>('/api/v1/sync/calendar', { method: 'POST' }),
   getCalendarEvents: (limit = 50) => request<CalendarEventRecord[]>(`/api/v1/sync/calendar-events?limit=${limit}`),
 

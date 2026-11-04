@@ -58,6 +58,27 @@ export const getUserEmails = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const getUserSpamEmails = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new AppError('Authentication required to view spam emails.', 401);
+    }
+
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
+    const spamEmails = await gmailService.getUserSpamEmails(userId, limit);
+
+    const response: ApiResponse<EmailRecord[]> = {
+      success: true,
+      data: spamEmails,
+      timestamp: new Date().toISOString()
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const syncCalendar = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;

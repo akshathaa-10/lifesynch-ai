@@ -3,7 +3,8 @@ import {
   syncGmail, 
   syncCalendar, 
   getSyncStatus, 
-  getUserEmails, 
+  getUserEmails,
+  getUserSpamEmails, 
   getUserCalendarEvents,
   syncResponsibilities,
   getUserResponsibilities
@@ -20,6 +21,7 @@ router.post('/gmail', syncGmail);
 
 // GET /api/v1/sync/emails
 router.get('/emails', getUserEmails);
+router.get('/spam', getUserSpamEmails);
 
 // POST /api/v1/sync/calendar
 router.post('/calendar', syncCalendar);

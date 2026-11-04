@@ -371,6 +371,100 @@ export class GmailService {
   /**
    * Retrieves Gmail sync status for the authenticated user.
    */
+  /**
+   * Retrieves spam emails directly from the Gmail SPAM folder for the authenticated user.
+   * Handles pagination so older spam messages are retrieved.
+   * Does NOT store them into the database emails table or trigger AI responsibility extraction.
+   */
+  public async getUserSpamEmails(userId: string, limit = 100): Promise<EmailRecord[]> {
+    logger.info(`Fetching Spam emails from Gmail API for user: ${userId} (limit: ${limit})`);
+    const authClient = await this.getAuthenticatedOAuthClient(userId);
+    const gmail = google.gmail({ version: 'v1', auth: authClient });
+
+    const allMessageSummaries: gmail_v1.Schema$Message[] = [];
+    let pageToken: string | undefined = undefined;
+
+    try {
+      do {
+        const pageSize = Math.min(50, limit - allMessageSummaries.length);
+        const listResponse: any = await gmail.users.messages.list({
+          userId: 'me',
+          includeSpamTrash: true,
+          q: 'in:spam',
+          maxResults: pageSize,
+          pageToken
+        });
+
+        if (listResponse.data.messages && listResponse.data.messages.length > 0) {
+          allMessageSummaries.push(...listResponse.data.messages);
+        }
+
+        pageToken = listResponse.data.nextPageToken || undefined;
+      } while (pageToken && allMessageSummaries.length < limit);
+
+      if (allMessageSummaries.length === 0) {
+        logger.info(`No spam messages found for user ${userId}`);
+        return [];
+      }
+
+      // Deduplicate summaries by ID in memory
+      const uniqueSummaries = Array.from(
+        new Map(allMessageSummaries.filter(m => !!m.id).map(m => [m.id!, m])).values()
+      );
+
+      // Fetch message details in concurrent chunks of 10
+      const spamEmails: EmailRecord[] = [];
+      const batchSize = 10;
+
+      for (let i = 0; i < uniqueSummaries.length; i += batchSize) {
+        const batch = uniqueSummaries.slice(i, i + batchSize);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (item) => {
+            if (!item.id) return null;
+            const detailRes = await gmail.users.messages.get({
+              userId: 'me',
+              id: item.id,
+              format: 'full'
+            });
+            return detailRes.data;
+          })
+        );
+
+        for (const res of batchResults) {
+          if (res.status === 'fulfilled' && res.value && res.value.id) {
+            const parsed = this.parseGmailMessage(res.value);
+            spamEmails.push({
+              id: res.value.id,
+              userId,
+              messageId: res.value.id,
+              threadId: res.value.threadId || undefined,
+              sender: parsed.sender,
+              recipient: parsed.recipient,
+              subject: parsed.subject,
+              snippet: parsed.snippet,
+              bodyText: parsed.bodyText,
+              bodyHtml: parsed.bodyHtml,
+              labels: parsed.labels,
+              receivedAt: parsed.receivedAt,
+              processed: true,
+              createdAt: parsed.receivedAt
+            });
+          }
+        }
+      }
+
+      // Sort chronological descending (newest first for display)
+      spamEmails.sort((a, b) => new Date(b.receivedAt || '').getTime() - new Date(a.receivedAt || '').getTime());
+
+      logger.info(`Successfully retrieved ${spamEmails.length} spam emails for user ${userId}`);
+      return spamEmails;
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Google Gmail API request failed';
+      logger.error(`Error retrieving spam emails for user ${userId}: ${errorMsg}`);
+      throw new AppError(`Failed to fetch spam emails: ${errorMsg}`, error?.code || 500);
+    }
+  }
+
   public async getSyncStatus(userId: string) {
     const syncState = await syncStateService.getSyncState(userId, 'gmail');
     return {

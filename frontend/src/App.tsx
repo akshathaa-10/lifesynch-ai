@@ -11,7 +11,10 @@ import {
   MapPin, 
   CheckSquare,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  ShieldAlert,
+  ArrowLeft,
+  RefreshCw
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
@@ -80,6 +83,13 @@ const MainDashboard: React.FC = () => {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
 
+  // Gmail Spam State
+  const [gmailView, setGmailView] = useState<'inbox' | 'spam'>('inbox');
+  const [spamEmails, setSpamEmails] = useState<EmailRecord[]>([]);
+  const [isLoadingSpam, setIsLoadingSpam] = useState<boolean>(false);
+  const [spamError, setSpamError] = useState<string | null>(null);
+  const [expandedSpamEmailId, setExpandedSpamEmailId] = useState<string | null>(null);
+
   // Calendar Ingestion State
   const [calendarEvents, setCalendarEvents] = useState<CalendarEventRecord[]>(() => dataCache.get(user?.id, 'calendar', []));
   const [isLoadingCalendar, setIsLoadingCalendar] = useState<boolean>(false);
@@ -104,6 +114,10 @@ const MainDashboard: React.FC = () => {
       if (cachedTasks.length > 0 || cachedEmails.length > 0 || cachedCal.length > 0) {
         setIsInitialLoading(false);
       }
+      setGmailView('inbox');
+      setSpamEmails([]);
+      setExpandedSpamEmailId(null);
+      setSpamError(null);
     }
   }, [user?.id]);
 
@@ -221,6 +235,33 @@ const MainDashboard: React.FC = () => {
       if (!quiet) setIsLoadingEmails(false);
     }
   }, [user?.id]);
+
+  const fetchSpamEmails = useCallback(async (_force = false) => {
+    setIsLoadingSpam(true);
+    setSpamError(null);
+    try {
+      const res = await apiClient.getSpamEmails(100);
+      setSpamEmails(res.data || []);
+    } catch (err: any) {
+      console.error('Failed to fetch spam emails:', err);
+      setSpamError(err?.message || 'Failed to retrieve spam emails from Gmail.');
+    } finally {
+      setIsLoadingSpam(false);
+    }
+  }, []);
+
+  const handleOpenSpam = useCallback(() => {
+    setGmailView('spam');
+    setExpandedSpamEmailId(null);
+    if (spamEmails.length === 0 && !isLoadingSpam) {
+      fetchSpamEmails();
+    }
+  }, [fetchSpamEmails, spamEmails.length, isLoadingSpam]);
+
+  const handleBackToInbox = useCallback(() => {
+    setGmailView('inbox');
+    setExpandedSpamEmailId(null);
+  }, []);
 
   const fetchCalendarEvents = useCallback(async (quiet = false) => {
     if (!quiet) setIsLoadingCalendar(true);
@@ -1740,91 +1781,269 @@ const MainDashboard: React.FC = () => {
       {activeTab === 'gmail' ? (
         /* ================= GMAIL DEDICATED VIEW ================= */
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center">
-                  <Mail className="w-4 h-4 text-[#34515e]" />
-                </div>
+          {gmailView === 'inbox' ? (
+            /* --- REGULAR INBOX VIEW --- */
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Gmail</h2>
-                  <p className="text-xs text-slate-500">{emails.length} messages synced</p>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed] flex items-center justify-center">
+                      <Mail className="w-4 h-4 text-[#34515e]" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">Gmail Inbox</h2>
+                      <p className="text-xs text-slate-500">{emails.length} messages synced</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top-Right: Spam Mails Option */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenSpam}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/90 text-xs font-semibold shadow-2xs transition-all cursor-pointer group"
+                    title="View Gmail Spam Folder"
+                  >
+                    <ShieldAlert className="w-4 h-4 text-amber-600 group-hover:scale-105 transition-transform" />
+                    <span>Spam Mails</span>
+                    {spamEmails.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-200/90 text-amber-900 text-[10px] font-bold">
+                        {spamEmails.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {isLoadingEmails || (isInitialLoading && emails.length === 0) ? (
-            <div className="text-center py-16 space-y-3">
-              <div className="w-8 h-8 border-2 border-[#34515e] border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-slate-500">Loading messages...</p>
-            </div>
-          ) : emails.length === 0 ? (
-            <div className="text-center py-20 px-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 space-y-3 shadow-xs">
-              <Inbox className="w-10 h-10 text-slate-400 mx-auto" />
-              <h3 className="text-sm font-semibold text-slate-800">No emails synced</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">New messages from your Gmail account will appear here automatically.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {emails.map((email) => {
-                const isExpanded = expandedEmailId === email.id;
-                const initials = getSenderInitials(email.sender);
-                const senderName = getSenderName(email.sender);
-                const relTime = formatRelativeTime(email.receivedAt);
-                return (
-                  <div
-                    key={email.id}
-                    className="rounded-2xl bg-white border border-slate-200/90 hover:border-[#34515e]/40 shadow-xs transition-all overflow-hidden"
-                  >
-                    {/* Email Row */}
-                    <div
-                      onClick={() => setExpandedEmailId(isExpanded ? null : email.id)}
-                      className="p-4 cursor-pointer"
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Sender Avatar */}
-                        <div className="w-8 h-8 rounded-full bg-[#e2edf2] border border-[#d2e5ed] flex items-center justify-center text-xs font-bold text-[#34515e] shrink-0 mt-0.5">
-                          {initials}
-                        </div>
+              {isLoadingEmails || (isInitialLoading && emails.length === 0) ? (
+                <div className="text-center py-16 space-y-3">
+                  <div className="w-8 h-8 border-2 border-[#34515e] border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-slate-500">Loading messages...</p>
+                </div>
+              ) : emails.length === 0 ? (
+                <div className="text-center py-20 px-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 space-y-3 shadow-xs">
+                  <Inbox className="w-10 h-10 text-slate-400 mx-auto" />
+                  <h3 className="text-sm font-semibold text-slate-800">No emails synced</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">New messages from your Gmail account will appear here automatically.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {emails.map((email) => {
+                    const isExpanded = expandedEmailId === email.id;
+                    const initials = getSenderInitials(email.sender);
+                    const senderName = getSenderName(email.sender);
+                    const relTime = formatRelativeTime(email.receivedAt);
+                    return (
+                      <div
+                        key={email.id}
+                        className="rounded-2xl bg-white border border-slate-200/90 hover:border-[#34515e]/40 shadow-xs transition-all overflow-hidden"
+                      >
+                        {/* Email Row */}
+                        <div
+                          onClick={() => setExpandedEmailId(isExpanded ? null : email.id)}
+                          className="p-4 cursor-pointer"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Sender Avatar */}
+                            <div className="w-8 h-8 rounded-full bg-[#e2edf2] border border-[#d2e5ed] flex items-center justify-center text-xs font-bold text-[#34515e] shrink-0 mt-0.5">
+                              {initials}
+                            </div>
 
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-3 mb-0.5">
-                            <span className="text-xs font-semibold text-slate-800 truncate">{senderName}</span>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs text-slate-400">{relTime}</span>
-                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-3 mb-0.5">
+                                <span className="text-xs font-semibold text-slate-800 truncate">{senderName}</span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-slate-400">{relTime}</span>
+                                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                                </div>
+                              </div>
+                              <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug truncate mb-1">{email.subject || '(No Subject)'}</p>
+                              {email.snippet && !isExpanded && (
+                                <p className="text-xs text-slate-500 line-clamp-1 leading-relaxed">{email.snippet}</p>
+                              )}
                             </div>
                           </div>
-                          <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug truncate mb-1">{email.subject || '(No Subject)'}</p>
-                          {email.snippet && !isExpanded && (
-                            <p className="text-xs text-slate-500 line-clamp-1 leading-relaxed">{email.snippet}</p>
-                          )}
                         </div>
-                      </div>
-                    </div>
 
-                    {/* Expanded Email Body */}
-                    {isExpanded && (
-                      <div className="border-t border-slate-100 bg-slate-50/70">
-                        <div className="px-4 py-3 flex flex-wrap gap-4 text-xs text-slate-500 border-b border-slate-200/60">
-                          <span><span className="text-slate-400 font-medium">From:</span> <span className="text-slate-800">{email.sender}</span></span>
-                          {email.recipient && <span><span className="text-slate-400 font-medium">To:</span> <span className="text-slate-800">{email.recipient}</span></span>}
-                          {email.receivedAt && <span><span className="text-slate-400 font-medium">Date:</span> <span className="text-slate-800">{new Date(email.receivedAt).toLocaleString()}</span></span>}
-                        </div>
-                        <div className="p-4 text-xs text-slate-700 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap font-sans">
-                          {email.bodyText || email.snippet || '(No text content)'}
-                        </div>
+                        {/* Expanded Email Body */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 bg-slate-50/70">
+                            <div className="px-4 py-3 flex flex-wrap gap-4 text-xs text-slate-500 border-b border-slate-200/60">
+                              <span><span className="text-slate-400 font-medium">From:</span> <span className="text-slate-800">{email.sender}</span></span>
+                              {email.recipient && <span><span className="text-slate-400 font-medium">To:</span> <span className="text-slate-800">{email.recipient}</span></span>}
+                              {email.receivedAt && <span><span className="text-slate-400 font-medium">Date:</span> <span className="text-slate-800">{new Date(email.receivedAt).toLocaleString()}</span></span>}
+                            </div>
+                            <div className="p-4 text-xs text-slate-700 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap font-sans">
+                              {email.bodyText || email.snippet || '(No text content)'}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            /* --- SPAM MAILS DEDICATED VIEW --- */
+            <>
+              {/* Spam Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBackToInbox}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer group"
+                    title="Return to regular Inbox"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:-translate-x-0.5 transition-transform" />
+                    <span>Back to Inbox</span>
+                  </button>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center">
+                      <ShieldAlert className="w-4 h-4 text-amber-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-slate-900">Gmail Spam Folder</h2>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
+                          Spam
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {isLoadingSpam ? 'Fetching spam emails from Gmail...' : `${spamEmails.length} spam message${spamEmails.length === 1 ? '' : 's'} found`}
+                      </p>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fetchSpamEmails(true)}
+                    disabled={isLoadingSpam}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                    title="Refresh Spam emails"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoadingSpam ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Safety & Isolation Notice Banner */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold">Isolated Spam Folder:</span> These messages were flagged as spam by Gmail. They are kept strictly separate from your main inbox and are never processed for AI responsibilities, reminders, or dashboard metrics.
+                </div>
+              </div>
+
+              {/* Spam Content States */}
+              {isLoadingSpam ? (
+                <div className="text-center py-16 space-y-3">
+                  <div className="w-8 h-8 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-slate-500">Retrieving spam messages from Gmail API...</p>
+                </div>
+              ) : spamError ? (
+                <div className="text-center py-12 px-4 rounded-3xl border border-red-200 bg-red-50/50 space-y-3 shadow-xs">
+                  <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
+                  <h3 className="text-sm font-semibold text-slate-800">Failed to load spam folder</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">{spamError}</p>
+                  <button
+                    type="button"
+                    onClick={() => fetchSpamEmails(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 shadow-2xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Try Again</span>
+                  </button>
+                </div>
+              ) : spamEmails.length === 0 ? (
+                <div className="text-center py-20 px-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 space-y-3 shadow-xs">
+                  <ShieldAlert className="w-10 h-10 text-slate-400 mx-auto" />
+                  <h3 className="text-sm font-semibold text-slate-800">No spam messages</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">Hooray! Your Gmail Spam folder is empty.</p>
+                  <button
+                    type="button"
+                    onClick={handleBackToInbox}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#34515e] text-white text-xs font-semibold shadow-2xs hover:bg-[#263c46]"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-white" />
+                    <span>Return to Inbox</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {spamEmails.map((email) => {
+                    const isExpanded = expandedSpamEmailId === email.id;
+                    const initials = getSenderInitials(email.sender);
+                    const senderName = getSenderName(email.sender);
+                    const relTime = formatRelativeTime(email.receivedAt);
+                    return (
+                      <div
+                        key={email.id}
+                        className="rounded-2xl bg-white border border-amber-200/60 hover:border-amber-400/70 shadow-xs transition-all overflow-hidden"
+                      >
+                        {/* Email Row */}
+                        <div
+                          onClick={() => setExpandedSpamEmailId(isExpanded ? null : email.id)}
+                          className="p-4 cursor-pointer"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Sender Avatar */}
+                            <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-xs font-bold text-amber-800 shrink-0 mt-0.5">
+                              {initials}
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-3 mb-0.5">
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="text-xs font-semibold text-slate-800 truncate">{senderName}</span>
+                                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 shrink-0">
+                                    Spam
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-slate-400">{relTime}</span>
+                                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                                </div>
+                              </div>
+                              <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug truncate mb-1">
+                                {email.subject || '(No Subject)'}
+                              </p>
+                              {email.snippet && !isExpanded && (
+                                <p className="text-xs text-slate-500 line-clamp-1 leading-relaxed">{email.snippet}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Email Body */}
+                        {isExpanded && (
+                          <div className="border-t border-amber-100 bg-amber-50/20">
+                            <div className="px-4 py-3 flex flex-wrap gap-4 text-xs text-slate-500 border-b border-amber-100/80">
+                              <span><span className="text-slate-400 font-medium">From:</span> <span className="text-slate-800">{email.sender}</span></span>
+                              {email.recipient && <span><span className="text-slate-400 font-medium">To:</span> <span className="text-slate-800">{email.recipient}</span></span>}
+                              {email.receivedAt && <span><span className="text-slate-400 font-medium">Date:</span> <span className="text-slate-800">{new Date(email.receivedAt).toLocaleString()}</span></span>}
+                            </div>
+                            <div className="p-4 text-xs text-slate-700 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap font-sans">
+                              {email.bodyText || email.snippet || '(No text content)'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
-      ) : activeTab === 'calendar' ? (
+            ) : activeTab === 'calendar' ? (
         /* ================= GOOGLE CALENDAR DEDICATED VIEW ================= */
         <div className="space-y-6">
           <div className="flex items-center gap-2.5">
