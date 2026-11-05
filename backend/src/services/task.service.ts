@@ -556,7 +556,7 @@ export class TaskService {
       !hasGenuineActionDeadline;
 
     // Ensure category is accurately assigned
-    if (!t.category || t.category === 'general') {
+    if (!t.category || (t.category as string) === 'general') {
       let targetCat: 'work' | 'academic' | 'personal' | 'finance' | 'meeting' | null = null;
       if (/\b(intern|internship|hiring|job|unstop|placement|recruitment|core team)\b/i.test(corpus)) {
         targetCat = 'work';

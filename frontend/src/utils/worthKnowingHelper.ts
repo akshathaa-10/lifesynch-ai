@@ -88,30 +88,32 @@ function extractImportantSentences(rawText: string): string[] {
   const cleaned = cleanEmailDescription(rawText);
   if (!cleaned) return [];
 
-  // Split into sentences
-  const sentences = cleaned
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 20 && s.length < 220);
+  // Split into sentences using proper sentence terminators or double line breaks
+  const rawSentences = cleaned
+    .split(/(?<=[.!?])\s+|\n\s*\n+/)
+    .map(s => s.replace(/\s+/g, ' ').trim())
+    .filter(s => s.length > 25 && s.length < 240);
 
   const keywords = [
-    'stipend', 'ppo', 'prize', 'award', '₹', 'rs.', 'lakh', 'cash prize',
+    'postponed', 'rescheduled', 'stipend', 'ppo', 'prize', 'award', '₹', 'rs.', 'lakh',
     'eligibility', 'eligible', 'selection', 'rounds', 'mode', 'platform',
     'venue', 'link', 'register', 'apply', 'seats', 'accommodate', 'session',
     'scheduled', 'runs from', 'conducted on', 'guidelines', 'test series',
-    'participants', 'transport', 'bus no', 'corrigendum', 'rescheduled'
+    'participants', 'transport', 'bus no', 'corrigendum', 'revised date', 'webinar',
+    'apologize', 'inconvenience', 'revised date and time'
   ];
 
   const matched: string[] = [];
-  for (const s of sentences) {
+  for (const s of rawSentences) {
     const lower = s.toLowerCase();
+    // Do not include signatures, greetings or contact info as important sentences
+    if (/thanks\s*(&|and)\s*regards|harshith|placement officer|cell:\s*\+|phone:\s*\+|tel:\s*\d|placement@nie/i.test(lower)) continue;
     if (keywords.some(kw => lower.includes(kw))) {
-      // Avoid duplicates or near duplicates
       if (!matched.some(m => m.toLowerCase().includes(s.toLowerCase().slice(0, 30)))) {
         matched.push(s);
       }
     }
-    if (matched.length >= 4) break;
+    if (matched.length >= 3) break;
   }
 
   return matched;
@@ -319,3 +321,117 @@ export function extractWorthKnowingDetails(
   };
 }
 
+/**
+ * Maps an IntelligentDiscovery item to a full Responsibility object so it opens
+ * seamlessly in the existing Responsibility Details modal interface, preserving
+ * informational classification and displaying clean, meaningful email information.
+ */
+export function mapWorthKnowingToResponsibility(
+  discovery: IntelligentDiscovery,
+  emails: EmailRecord[] = [],
+  calendarEvents: CalendarEventRecord[] = [],
+  tasks: Responsibility[] = []
+): Responsibility {
+  const matchingTask = findMatchingResponsibility(discovery, tasks);
+  const rawEmail = discovery.rawEmail || emails.find(e => e.id === discovery.sourceId);
+  const rawCalendar = discovery.rawCalendarEvent || calendarEvents.find(c => c.id === discovery.sourceId);
+
+  // 1. Cleaned Title
+  const rawTitle = discovery.title || rawEmail?.subject || rawCalendar?.summary || 'Informational Update';
+  const cleanTitle = rawTitle.replace(/^(\[(?:csestudents|all)\]\s*|(?:fwd|re|fw):\s*)+/gi, '').trim() || rawTitle;
+
+  // 2. Cleaned Description (strictly email content, never signatures or disclaimers)
+  let description = extractAboutExplanation(discovery, matchingTask, rawEmail, rawCalendar);
+  if (!description || /thanks\s*(&|and)\s*regards|harshith|placement officer|cell:\s*\+/i.test(description)) {
+    const fallbackClean = cleanEmailDescription(rawEmail?.bodyText || rawEmail?.snippet || rawCalendar?.description || '');
+    if (fallbackClean) {
+      const paras = fallbackClean.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+      description = paras.slice(0, 2).join('\n\n').slice(0, 380).trim();
+    }
+  }
+  if (!description) {
+    description = discovery.explanation || 'Informational notice received from connected communications.';
+  }
+
+  // 3. Action Required
+  let isActionRequired = false;
+  let actionText = 'Informational – No action required';
+
+  if (matchingTask?.action) {
+    const cleanAction = matchingTask.action.trim();
+    const isInfo = 
+      matchingTask.sourceContext?.classification === 'informational' ||
+      matchingTask.sourceContext?.classification === 'program_schedule' ||
+      cleanAction.toLowerCase().startsWith('no action') ||
+      cleanAction.toLowerCase().includes('no action required') ||
+      cleanAction.toLowerCase().includes('informational only');
+
+    if (!isInfo) {
+      isActionRequired = true;
+      actionText = cleanAction;
+    }
+  }
+
+  // 4. Recommended Next Step (only when genuinely actionable)
+  const nextStep = isActionRequired
+    ? (matchingTask?.sourceContext?.nextStep || deriveSpecificNextStep(cleanTitle, actionText, false).nextStep)
+    : undefined;
+
+  // 5. Important Details (relevant announcements, dates, highlights)
+  const importantDetails = extractImportantSentences(rawEmail?.bodyText || rawEmail?.snippet || rawCalendar?.description || '');
+
+  // 6. Application Window Dates (if applicable)
+  const windowStartDate = matchingTask?.sourceContext?.windowStartDate;
+  const windowEndDate = matchingTask?.sourceContext?.windowEndDate;
+
+  // 7. Due Date (ONLY if genuinely present, never invented)
+  let dueDate: string | undefined = undefined;
+  let dueTime: string | undefined = undefined;
+  if (
+    matchingTask?.dueDate &&
+    matchingTask.sourceContext?.classification !== 'program_schedule' &&
+    matchingTask.sourceContext?.deadlineType !== 'program_duration' &&
+    matchingTask.sourceContext?.deadlineType !== 'none'
+  ) {
+    dueDate = matchingTask.dueDate;
+    dueTime = matchingTask.dueTime;
+  } else if (rawCalendar?.startTime) {
+    dueDate = rawCalendar.startTime;
+  }
+
+  const categoryId = matchingTask?.category || (discovery.category === 'academic' ? 'academic' : discovery.category === 'career' ? 'career' : 'general');
+
+  return {
+    id: matchingTask?.id || discovery.id,
+    userId: matchingTask?.userId || '',
+    title: cleanTitle,
+    description,
+    type: matchingTask?.type || (discovery.sourceType === 'calendar' ? 'appointment' : 'task'),
+    priority: matchingTask?.priority || 'medium',
+    status: matchingTask?.status || 'pending',
+    category: categoryId as any,
+    dueDate,
+    dueTime,
+    action: actionText,
+    source: discovery.sourceType === 'calendar' ? 'calendar' : discovery.sourceType === 'cross_source' ? 'both' : 'gmail',
+    sourceId: discovery.sourceId,
+    sourceContext: {
+      sender: rawEmail?.sender || matchingTask?.sourceContext?.sender,
+      location: rawCalendar?.location || matchingTask?.sourceContext?.location,
+      snippet: cleanEmailDescription(rawEmail?.snippet || rawEmail?.bodyText || '').slice(0, 160),
+      subject: rawEmail?.subject || rawCalendar?.summary || cleanTitle,
+      calendarEventId: rawCalendar?.id || (matchingTask?.sourceContext?.calendarEventId as string | undefined),
+      isInformational: true,
+      isWorthKnowing: true,
+      importantDetails: importantDetails.length > 0 ? importantDetails : undefined,
+      windowStartDate,
+      windowEndDate,
+      nextStep
+    },
+    confidence: matchingTask?.confidence || 1,
+    tags: matchingTask?.tags || ['worth_knowing'],
+    isArchived: false,
+    createdAt: matchingTask?.createdAt || new Date().toISOString(),
+    updatedAt: matchingTask?.updatedAt || new Date().toISOString()
+  };
+}

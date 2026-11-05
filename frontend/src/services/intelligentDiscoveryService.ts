@@ -1,5 +1,6 @@
 import { EmailRecord, CalendarEventRecord, Responsibility } from '@lifesynch/shared';
 import { LifeCategoryId } from './lifeCategoryService';
+import { cleanEmailDescription } from '../utils/textUtils';
 
 export type DiscoveryType = 'opportunity' | 'update' | 'announcement' | 'connected_thread' | 'cross_source';
 
@@ -164,12 +165,22 @@ function extractWhyItMatters(
     return 'Logistical update from Onyx E-Cell regarding campus transport for participants.';
   }
 
-  // Fallback to cleaned grounded snippet
-  let cleanSnip = decodeHtml(snippet || bodyText || '').slice(0, 160);
-  if (cleanSnip.length >= 155) {
-    cleanSnip = cleanSnip.slice(0, cleanSnip.lastIndexOf(' ')) + '...';
+  if (corpus.includes('postponed') || corpus.includes('rescheduled')) {
+    return 'The scheduled session or webinar has been postponed. Check the updated schedule when announced.';
   }
-  return cleanSnip || 'Important contextual update discovered from your incoming communication channels.';
+
+  // Fallback to thoroughly cleaned grounded message text (never raw signatures or greetings)
+  const cleaned = cleanEmailDescription(bodyText || snippet || '');
+  if (cleaned) {
+    const singleLine = cleaned.replace(/\s+/g, ' ');
+    const firstSentence = singleLine.split(/(?<=[.!?])\s+/)[0]?.trim();
+    if (firstSentence && firstSentence.length >= 25 && !/regards|placement officer|cell:\s*\+/i.test(firstSentence)) {
+      return firstSentence.length > 160 ? firstSentence.slice(0, 157) + '...' : firstSentence;
+    }
+    const cleanSnip = singleLine.slice(0, 160);
+    return cleanSnip.slice(0, cleanSnip.lastIndexOf(' ')) + '...';
+  }
+  return 'Important informational update discovered from your incoming communication channels.';
 }
 
 /**

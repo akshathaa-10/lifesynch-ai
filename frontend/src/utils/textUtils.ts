@@ -16,19 +16,49 @@ export function cleanEmailDescription(rawText?: string | null): string {
   text = text.replace(/&quot;/gi, '"');
   text = text.replace(/&#39;/gi, "'");
 
-  // 2. Strip forwarded message header blocks
-  // e.g. "---------- Forwarded message ---------\nFrom: ...\nDate: ...\nSubject: ...\nTo: ..."
-  text = text.replace(/-{3,}\s*(forwarded message|original message)\s*-{3,}[\s\S]*?(From:|Subject:|Date:|To:)[^\n]*\n([^\n]*\n)?([^\n]*\n)?([^\n]*\n)?/gi, '');
-  text = text.replace(/^(From|To|Date|Subject|Sent):\s*[^\n]+\n/gim, '');
-  text = text.replace(/On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d+,\s+\d{4}[^:]+wrote:/gi, '');
+  // 2. Handle forwarded message markers (discard forwarding notes/signatures above forwarded blocks)
+  const fwdMatch = text.match(/-{3,}\s*(forwarded message|original message)\s*-{3,}/i);
+  if (fwdMatch && fwdMatch.index !== undefined) {
+    const before = text.slice(0, fwdMatch.index);
+    const after = text.slice(fwdMatch.index);
+    if (
+      /thanks\s*(&|and)\s*regards|training and placement|placement officer|cell:\s*\+|phone:\s*\+|tel:\s*\d|placement@nie\.ac\.in|the national institute of engineering/i.test(before) ||
+      before.trim().length < 160
+    ) {
+      text = after;
+    }
+  }
 
-  // 3. Strip common signature blocks and disclaimers
+  // 3. Strip forwarded message header blocks
+  text = text.replace(/-{3,}\s*(forwarded message|original message)\s*-{3,}[^\n]*\n+/gi, '');
+  text = text.replace(/^(From|To|Date|Subject|Sent):\s*[^\n]+\n/gim, '');
+  text = text.replace(/On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d+,\s+\d{4}[^:]+wrote:\n?/gi, '');
+
+  // 4. Strip top signature block if still present
+  text = text.replace(/^[\s\*]*(thanks\s*(&|and)\s*regards|regards|warm regards|best regards)[^\n]*\n[\s\S]*?(\n\s*\n|(?=[A-Z][a-z]))/gi, '');
+  text = text.replace(/^[\s\*]*(the national institute of engineering|placement officer|training and placement)[^\n]*\n[\s\S]*?(\n\s*\n|(?=[A-Z][a-z]))/gi, '');
+
+  // 5. Strip decorative divider lines, image placeholders and attachments
+  text = text.replace(/^[=_*-]{3,}\n+/gm, '');
+  text = text.replace(/\[image:[^\]]*\]/gi, '');
+  text = text.replace(/\[Attachments:[^\]]*\]/gi, '');
+
+  // 6. Strip initial greetings (e.g. "Hi,", "Hello all,", "Dear Students,")
+  text = text.replace(/^[\s\*]*(hi|hello|dear\s+[^,\n]+|greetings)[,!.]\s*\n*/gi, '');
+
+  // 7. Strip trailing disclaimers, system notices, signatures, and group footers
   text = text.replace(/\n\s*--\s*\n[\s\S]*$/gi, '');
   text = text.replace(/\n\s*(best regards|warm regards|thanks & regards|thanks and regards|sincerely|cheers|yours truly|regards)[\s\S]*$/gi, '');
+  text = text.replace(/(This is a system generated mail\.|This message is intended only|CONFIDENTIALITY NOTICE|This e-mail and any files|Notice:\s*The information contained)[\s\S]*$/gi, '');
+  text = text.replace(/You received this message because you are subscribed to the Google Groups[\s\S]*$/gi, '');
+  text = text.replace(/For further queries would request you to drop a mail to[\s\S]*$/gi, '');
   text = text.replace(/Sent from my (iPhone|iPad|Android|Galaxy|mobile device)[\s\S]*$/gi, '');
-  text = text.replace(/(This message is intended only for the use of the individual|CONFIDENTIALITY NOTICE|This e-mail and any files transmitted with it are confidential)[\s\S]*$/gi, '');
 
-  // 4. Clean extra whitespace and line breaks
+  // 8. Clean markdown stars or dashes
+  text = text.replace(/^\s*[\*\-]\s*/gm, '');
+  text = text.replace(/\*+/g, '');
+
+  // 9. Clean extra whitespace and line breaks
   text = text.replace(/[ \t]+/g, ' ');
   text = text.replace(/\n\s*\n\s*\n+/g, '\n\n');
   return text.trim();

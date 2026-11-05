@@ -39,6 +39,7 @@ import {
   IntelligentDiscovery 
 } from '../../services/intelligentDiscoveryService';
 import { WorthKnowingDetailModal } from './WorthKnowingDetailModal';
+import { mapWorthKnowingToResponsibility } from '../../utils/worthKnowingHelper';
 
 interface PersonalIntelligenceHubProps {
   user: User | null;
@@ -125,7 +126,8 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
 
   // Open intelligent discovery source as structured Worth Knowing detail
   const handleDiscoveryClick = (discovery: IntelligentDiscovery) => {
-    setSelectedDiscovery(discovery);
+    const resp = mapWorthKnowingToResponsibility(discovery, emails, calendarEvents, tasks);
+    onSelectResponsibility(resp);
   };
 
   // Open item source as full Responsibility Details

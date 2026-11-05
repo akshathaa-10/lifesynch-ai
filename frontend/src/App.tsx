@@ -766,6 +766,11 @@ const MainDashboard: React.FC = () => {
   };
 
   const getModalStatus = (item: Responsibility, refDate: Date): { label: string; color: string } => {
+    if ((item.sourceContext as any)?.isInformational || item.sourceContext?.classification === 'informational') {
+      if (!item.dueDate || !item.dueDate.trim()) {
+        return { label: 'Informational', color: 'text-[#34515e] bg-[#e2edf2] border-[#c2dde6]' };
+      }
+    }
     if (!item.dueDate || !item.dueDate.trim()) {
       return { label: 'No Deadline', color: 'text-slate-600 bg-slate-100 border-slate-200' };
     }
@@ -2376,7 +2381,7 @@ const MainDashboard: React.FC = () => {
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider">
-                  Responsibility Details
+                  {(selectedResponsibility.sourceContext as any)?.isWorthKnowing || (selectedResponsibility.sourceContext as any)?.isInformational ? 'Worth Knowing Details' : 'Responsibility Details'}
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 mt-1 leading-snug">
                   {selectedResponsibility.title}
@@ -2393,8 +2398,25 @@ const MainDashboard: React.FC = () => {
             {/* Scrollable Modal Body */}
             <div className="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
               {selectedResponsibility.action && (
-                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1.5">
-                  <span className="text-xs font-bold text-amber-800 uppercase tracking-wider block">Action Required</span>
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${
+                  selectedResponsibility.action.toLowerCase().includes('informational') || (selectedResponsibility.sourceContext as any)?.isInformational
+                    ? 'bg-[#e2edf2]/50 border-[#d2e5ed]'
+                    : 'bg-amber-50/70 border border-amber-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold uppercase tracking-wider block ${
+                      selectedResponsibility.action.toLowerCase().includes('informational') || (selectedResponsibility.sourceContext as any)?.isInformational
+                        ? 'text-[#34515e]'
+                        : 'text-amber-800'
+                    }`}>
+                      Action Required
+                    </span>
+                    {(selectedResponsibility.action.toLowerCase().includes('informational') || (selectedResponsibility.sourceContext as any)?.isInformational) && (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white/80 text-[#34515e] border border-[#c2dde6]">
+                        Informational
+                      </span>
+                    )}
+                  </div>
                   <div className="pt-0.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-1 text-xs sm:text-sm font-medium text-slate-900">
                     <p>{selectedResponsibility.action}</p>
                   </div>
@@ -2429,6 +2451,23 @@ const MainDashboard: React.FC = () => {
                   </div>
                 );
               })()}
+
+              {Boolean((selectedResponsibility.sourceContext as any)?.importantDetails?.length) && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider block">
+                    Important Details
+                  </span>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                    <ul className="space-y-1.5 text-xs text-slate-700 list-disc list-inside">
+                      {((selectedResponsibility.sourceContext as any).importantDetails as string[]).map((detail: string, idx: number) => (
+                        <li key={idx} className="leading-relaxed">
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
                 <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
