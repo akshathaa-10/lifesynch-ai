@@ -1,3 +1,4 @@
+import { cleanEmailDescription, deriveSpecificNextStep } from './utils/textUtils';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   CheckCircle2, 
@@ -22,11 +23,13 @@ import { AuthCallback } from './components/auth/AuthCallback';
 import { AppLayout } from './components/layout/AppLayout';
 import { AskAssistant } from './components/assistant/AskAssistant';
 import { PersonalIntelligenceHub } from './components/dashboard/PersonalIntelligenceHub';
+import { GlobalSearchResultsView } from './components/search/GlobalSearchResultsView';
+import { CalendarEventModal } from './components/calendar/CalendarEventModal';
+import { performGlobalSearch } from './services/globalSearchService';
 import { apiClient, ApiError } from './services/api';
 import { dataCache } from './services/dataCache';
 import { 
-  Responsibility, 
-  TaskPriority,
+  Responsibility,
   EmailRecord, 
   CalendarEventRecord,
   ReminderNotification
@@ -39,6 +42,9 @@ const MainDashboard: React.FC = () => {
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [tasks, setTasks] = useState<Responsibility[]>(() => dataCache.get(user?.id, 'tasks', []));
   const [selectedResponsibility, setSelectedResponsibility] = useState<Responsibility | null>(null);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<CalendarEventRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const [pendingAssistantQuestion, setPendingAssistantQuestion] = useState<string | null>(null);
 
   const handleAskQuestion = useCallback((q: string) => {
@@ -62,9 +68,9 @@ const MainDashboard: React.FC = () => {
   }, [user?.id]);
 
   // Responsibilities View State
-  const [upcomingFilter, setUpcomingFilter] = useState<'all' | 'deadlines' | 'windows' | 'events'>('all');
+
   const syncInProgressRef = React.useRef<boolean>(false);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [, setLastSyncTime] = useState<Date | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Real-time clock ticker for time-sensitive deadline recalculations (DUE TODAY -> OVERDUE TODAY)
@@ -94,6 +100,157 @@ const MainDashboard: React.FC = () => {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEventRecord[]>(() => dataCache.get(user?.id, 'calendar', []));
   const [isLoadingCalendar, setIsLoadingCalendar] = useState<boolean>(false);
 
+  // Global search memo across connected data
+  const searchResults = useMemo(() => {
+    return performGlobalSearch(tasks, calendarEvents, emails, searchQuery);
+  }, [tasks, calendarEvents, emails, searchQuery]);
+
+  // Find matching email for a responsibility
+  const findMatchingEmail = useCallback((task: Responsibility): EmailRecord | undefined => {
+    // 1. Match by task.sourceId against email id, messageId, or threadId
+    if (task.sourceId) {
+      const match = emails.find(e => 
+        e.id === task.sourceId || 
+        e.messageId === task.sourceId || 
+        (e.threadId && e.threadId === task.sourceId)
+      );
+      if (match) return match;
+    }
+
+    // 2. Match by threadId from sourceContext
+    if (task.sourceContext?.threadId) {
+      const match = emails.find(e => 
+        e.threadId === task.sourceContext?.threadId || 
+        e.messageId === task.sourceContext?.threadId ||
+        e.id === task.sourceContext?.threadId
+      );
+      if (match) return match;
+    }
+
+    // 3. Match by secondarySourceId
+    if (task.secondarySourceId) {
+      const match = emails.find(e => 
+        e.id === task.secondarySourceId || 
+        e.messageId === task.secondarySourceId || 
+        (e.threadId && e.threadId === task.secondarySourceId)
+      );
+      if (match) return match;
+    }
+
+    // 4. Match by exact subject from sourceContext
+    if (task.sourceContext?.subject) {
+      const cleanSub = task.sourceContext.subject.trim().toLowerCase();
+      const match = emails.find(e => e.subject && e.subject.trim().toLowerCase() === cleanSub);
+      if (match) return match;
+    }
+
+    // 5. Match by title against email subject
+    if (task.title) {
+      const cleanTitle = task.title.trim().toLowerCase();
+      const match = emails.find(e => {
+        if (!e.subject) return false;
+        const sub = e.subject.trim().toLowerCase();
+        return sub === cleanTitle || cleanTitle.includes(sub) || sub.includes(cleanTitle);
+      });
+      if (match) return match;
+    }
+
+    // 6. Match by sender if single match
+    if (task.sourceContext?.sender) {
+      const senderClean = task.sourceContext.sender.toLowerCase();
+      const bySender = emails.filter(e => e.sender && e.sender.toLowerCase().includes(senderClean));
+      if (bySender.length === 1) return bySender[0];
+    }
+
+    return undefined;
+  }, [emails]);
+
+  // Open exact corresponding email in Gmail tab
+  const handleOpenEmailForTask = useCallback((task: Responsibility) => {
+    const matchedEmail = findMatchingEmail(task);
+    const targetEmailId = matchedEmail ? matchedEmail.id : (task.sourceId || null);
+
+    setGmailView('inbox');
+    setActiveTab('gmail');
+
+    if (targetEmailId) {
+      setExpandedEmailId(targetEmailId);
+      setTimeout(() => {
+        const el = document.getElementById(`email-item-${targetEmailId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+    }
+  }, [findMatchingEmail]);
+
+  // Get comprehensive description for a responsibility using actual extracted data
+  const getResponsibilityDescription = useCallback((resp: Responsibility | null): string | null => {
+    if (!resp) return null;
+    const cleanDesc = (resp.description || '').trim();
+    if (cleanDesc && cleanDesc.toLowerCase() !== resp.title.toLowerCase()) {
+      return cleanEmailDescription(cleanDesc);
+    }
+
+    if (resp.sourceContext?.snippet && resp.sourceContext.snippet.trim()) {
+      return cleanEmailDescription(resp.sourceContext.snippet.trim());
+    }
+
+    // Try matching email from ingested emails
+    const matchedEmail = findMatchingEmail(resp);
+    if (matchedEmail) {
+      if (matchedEmail.bodyText && matchedEmail.bodyText.trim()) {
+        return cleanEmailDescription(matchedEmail.bodyText.trim());
+      }
+      if (matchedEmail.snippet && matchedEmail.snippet.trim()) {
+        return cleanEmailDescription(matchedEmail.snippet.trim());
+      }
+    }
+
+    // Try matching calendar event from ingested events
+    if (resp.source === 'calendar' || resp.sourceContext?.calendarEventId) {
+      const targetCalId = resp.sourceContext?.calendarEventId || resp.sourceId;
+      const matchedCal = calendarEvents.find(c => 
+        c.id === targetCalId || 
+        c.eventId === targetCalId ||
+        (c.summary && c.summary.toLowerCase() === resp.title.toLowerCase())
+      );
+      if (matchedCal) {
+        if (matchedCal.description && matchedCal.description.trim()) {
+          return cleanEmailDescription(matchedCal.description.trim());
+        }
+        if (matchedCal.location) {
+          return `Scheduled event at ${matchedCal.location}.`;
+        }
+        return 'Scheduled event on your calendar.';
+      }
+    }
+
+    if (resp.sourceContext?.nextStep && resp.sourceContext.nextStep !== resp.action) {
+      return cleanEmailDescription(resp.sourceContext.nextStep);
+    }
+
+    if (resp.action) {
+      return cleanEmailDescription(resp.action);
+    }
+
+    return null;
+  }, [findMatchingEmail, calendarEvents]);
+
+  const handleOpenEmailById = useCallback((emailId: string) => {
+    const matched = emails.find(e => e.id === emailId || e.messageId === emailId || e.threadId === emailId);
+    const targetId = matched ? matched.id : emailId;
+    setGmailView('inbox');
+    setExpandedEmailId(targetId);
+    setActiveTab('gmail');
+    setTimeout(() => {
+      const el = document.getElementById(`email-item-${targetId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
+  }, [emails]);
+
   // Reminders & Notifications State (integrated into top navigation)
   const [reminders, setReminders] = useState<ReminderNotification[]>(() => dataCache.get(user?.id, 'reminders', []));
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => !dataCache.hasAnyUserCache(user?.id));
@@ -118,6 +275,19 @@ const MainDashboard: React.FC = () => {
       setSpamEmails([]);
       setExpandedSpamEmailId(null);
       setSpamError(null);
+    }
+  }, [user?.id]);
+
+  const handleMarkAllRemindersAsRead = useCallback(async () => {
+    try {
+      await apiClient.markAllRemindersAsRead();
+      setReminders(prev => {
+        const updated = prev.map(r => ({ ...r, isRead: true }));
+        dataCache.set(user?.id, 'reminders', updated);
+        return updated;
+      });
+    } catch (err) {
+      console.warn('Failed to mark all reminders as read:', err);
     }
   }, [user?.id]);
 
@@ -295,6 +465,24 @@ const MainDashboard: React.FC = () => {
       if (incoming) {
         dataCache.set(user?.id, 'reminders', incoming);
         setReminders(prev => {
+          // Trigger browser notification for newly arrived unread alerts
+          const newUnreads = incoming.filter(inR => !inR.isRead && !prev.some(pR => pR.id === inR.id));
+          if (newUnreads.length > 0 && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            for (const item of newUnreads.slice(0, 2)) {
+              try {
+                const notif = new Notification(item.title, {
+                  body: item.message,
+                  icon: '/favicon.ico'
+                });
+                notif.onclick = () => {
+                  window.focus();
+                };
+              } catch (e) {
+                console.warn('Browser notification error:', e);
+              }
+            }
+          }
+
           if (prev.length === incoming.length) {
             const isSame = prev.every((r, idx) => r.id === incoming[idx].id && r.isRead === incoming[idx].isRead);
             if (isSame) return prev;
@@ -469,44 +657,7 @@ const MainDashboard: React.FC = () => {
   };
 
 
-  // Priority indicator placed before titles: High (H), Medium (M), Low (L) in subtle pill
-  const renderPriorityDot = (priority: TaskPriority) => {
-    switch (priority) {
-      case 'urgent':
-      case 'high':
-        return (
-          <span
-            className="w-4 h-4 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
-            title="High Priority"
-            aria-label="High Priority"
-          >
-            H
-          </span>
-        );
-      case 'medium':
-        return (
-          <span
-            className="w-4 h-4 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
-            title="Medium Priority"
-            aria-label="Medium Priority"
-          >
-            M
-          </span>
-        );
-      case 'low':
-      default:
-        return (
-          <span
-            className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs"
-            title="Low Priority"
-            aria-label="Low Priority"
-          >
-            L
-          </span>
-        );
-    }
-  };
-
+  
   const formatTableDueDate = (dueStr?: string, dueTimeStr?: string): string => {
     if (!dueStr) return 'No deadline';
     const d = new Date(dueStr);
@@ -861,6 +1012,46 @@ const MainDashboard: React.FC = () => {
       };
     };
 
+    const renderStackedDate = (
+      rawDateStr: string,
+      dotColor?: string,
+      animatePulse?: boolean,
+      textColor: string = 'text-slate-700'
+    ) => {
+      if (!rawDateStr || rawDateStr === 'No deadline') {
+        return <span className="text-slate-600 font-medium">No deadline</span>;
+      }
+
+      let datePart = rawDateStr;
+      let timePart = '';
+
+      if (rawDateStr.includes(' · ')) {
+        const parts = rawDateStr.split(' · ');
+        datePart = parts[0].trim();
+        timePart = parts.slice(1).join(' · ').trim();
+      } else if (rawDateStr.includes(' • ')) {
+        const parts = rawDateStr.split(' • ');
+        datePart = parts[0].trim();
+        timePart = parts.slice(1).join(' • ').trim();
+      }
+
+      return (
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className={`inline-flex items-center gap-1.5 font-medium leading-tight ${textColor}`}>
+            {dotColor && (
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${animatePulse ? 'animate-pulse' : ''}`} />
+            )}
+            <span className="whitespace-nowrap">{datePart}</span>
+          </div>
+          {timePart && (
+            <span className="text-[11px] text-slate-600 font-normal mt-0.5 whitespace-nowrap">
+              {timePart}
+            </span>
+          )}
+        </div>
+      );
+    };
+
     const formatRelevantDateText = (item: Responsibility, schedule: ReturnType<typeof getItemSchedule>) => {
       // 1. Events & Meetings: display actual event date and time, never as a submission deadline
       if (schedule.kind === 'event') {
@@ -1077,15 +1268,8 @@ const MainDashboard: React.FC = () => {
       return dtA - dtB;
     });
 
-    // Upcoming filtering & sorting: nearest relevant date/time first
-    const filteredUpcomingList = upcomingList.filter(t => {
-      const s = getItemSchedule(t, currentTime);
-      if (upcomingFilter === 'all') return true;
-      if (upcomingFilter === 'windows') return s.kind === 'window';
-      if (upcomingFilter === 'events') return s.kind === 'event' || s.kind === 'program';
-      if (upcomingFilter === 'deadlines') return s.kind === 'deadline';
-      return true;
-    }).sort((a, b) => {
+    // Sort Upcoming: nearest relevant date/time first
+    upcomingList.sort((a, b) => {
       const timeA = getItemSchedule(a, currentTime).relevantDate?.getTime() ?? Infinity;
       const timeB = getItemSchedule(b, currentTime).relevantDate?.getTime() ?? Infinity;
       return timeA - timeB;
@@ -1105,77 +1289,70 @@ const MainDashboard: React.FC = () => {
       return timeB - timeA;
     });
 
-    const renderClickableSource = (item: Responsibility) => {
-      const hasCal = item.source === 'calendar' || (item.sources && item.sources.includes('calendar'));
-      const hasGmail = item.source === 'gmail' || (item.sources && item.sources.includes('gmail'));
+    const renderSourceCell = (item: Responsibility) => {
+      const hasCal = item.source === 'calendar' || (item.sources && item.sources.includes('calendar')) || Boolean(item.sourceContext?.calendarEventId);
+      const hasGmail = item.source === 'gmail' || (item.sources && item.sources.includes('gmail')) || Boolean(item.sourceContext?.sender);
       const isBoth = item.source === 'both' || (hasCal && hasGmail);
 
       if (isBoth) {
         return (
-          <div className="inline-flex items-center gap-1.5 justify-end whitespace-nowrap">
-            <button
-              type="button"
+          <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
+            <span 
+              title="View Mail - Open corresponding email in Gmail" 
+              className="inline-flex items-center justify-center text-rose-500 hover:scale-110 transition-transform cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
-                if (item.sourceId) setExpandedEmailId(item.sourceId);
-                setActiveTab('gmail');
+                handleOpenEmailForTask(item);
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
-              title="Open corresponding Gmail message"
             >
-              <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
-              <span>Gmail</span>
-            </button>
-            <button
-              type="button"
+              <Mail className="w-3.5 h-3.5" />
+            </span>
+            <span 
+              title="Google Calendar" 
+              className="inline-flex items-center justify-center text-indigo-500 hover:scale-110 transition-transform cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveTab('calendar');
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
-              title="Open corresponding Google Calendar event"
             >
-              <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
-              <span>Calendar</span>
-            </button>
+              <CalendarIcon className="w-3.5 h-3.5" />
+            </span>
           </div>
         );
       }
 
       if (hasCal) {
         return (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveTab('calendar');
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
-            title="Open corresponding Google Calendar event"
-          >
-            <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
-            <span>Calendar</span>
-          </button>
+          <div className="flex flex-col items-center justify-center pt-0.5">
+            <span 
+              title="Google Calendar" 
+              className="inline-flex items-center justify-center text-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('calendar');
+              }}
+            >
+              <CalendarIcon className="w-4 h-4" />
+            </span>
+          </div>
         );
       }
 
       return (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (item.sourceId) setExpandedEmailId(item.sourceId);
-            setActiveTab('gmail');
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
-          title="Open corresponding Gmail message"
-        >
-          <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
-          <span>Gmail</span>
-        </button>
+        <div className="flex flex-col items-center justify-center pt-0.5">
+          <span 
+            title="View Mail - Open corresponding email in Gmail" 
+            className="inline-flex items-center justify-center text-rose-500 hover:scale-110 transition-transform cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenEmailForTask(item);
+            }}
+          >
+            <Mail className="w-4 h-4" />
+          </span>
+        </div>
       );
     };
-
     const renderResponsibilityTable = (
       items: Responsibility[],
       options?: { 
@@ -1214,10 +1391,10 @@ const MainDashboard: React.FC = () => {
             <table className="w-full text-left border-collapse table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 bg-[#f0f5f8] text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  <th className="py-3 px-4 w-[36%] text-left font-bold">Event / Responsibility</th>
-                  <th className="py-3 px-4 w-[26%] text-left font-bold">Action Required</th>
-                  <th className="py-3 px-4 w-[22%] text-left font-bold">Deadline / Date & Time</th>
-                  <th className="py-3 px-4 w-[16%] text-right font-bold">Source</th>
+                  <th className="py-3 px-2 w-12 text-center font-bold" title="Source">Source</th>
+                  <th className="py-3 px-4 w-[46%] text-center font-bold">Event / Responsibility</th>
+                  <th className="py-3 px-4 w-[34%] text-center font-bold">Action Required</th>
+                  <th className="py-3 px-4 w-[18%] text-center font-bold">Deadline / Date & Time</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -1226,126 +1403,94 @@ const MainDashboard: React.FC = () => {
                   const formattedDate = formatRelevantDateText(item, schedule);
                   const titleText = formatTitleText(item.title);
                   const isTodayDue = schedule.kind === 'deadline' && schedule.diffDays === 0 && !schedule.isPast;
-                  const conciseAction = item.sourceContext?.nextStep || item.action;
+                  const rawAction = item.sourceContext?.nextStep || item.action;
+                  const actionClean = (rawAction || '').trim();
+                  const isPassive = !actionClean || 
+                    actionClean.toLowerCase() === 'none' || 
+                    actionClean.toLowerCase() === 'n/a' || 
+                    actionClean.toLowerCase().startsWith('no action') ||
+                    actionClean.toLowerCase().includes('no action required') ||
+                    actionClean.toLowerCase().startsWith('fyi');
+                  const actionText = !isPassive ? actionClean : null;
 
                   const renderDateStatus = () => {
                     if (options?.isNoDeadline || formattedDate === 'No deadline') {
-                      return <span className="text-slate-400">{formattedDate}</span>;
+                      return <span className="text-slate-600 font-medium">No deadline</span>;
                     }
                     if (options?.isInformative || item.sourceContext?.classification === 'informational') {
-                      return <span className="text-slate-500 font-medium">{formattedDate}</span>;
+                      return renderStackedDate(formattedDate, '', false, 'text-slate-800');
                     }
                     if (schedule.isPast) {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                          <span>{formattedDate}</span>
-                        </span>
-                      );
+                      return renderStackedDate(formattedDate, 'bg-rose-400', false, 'text-rose-700');
                     }
                     if (isTodayDue) {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-                          <span>{formattedDate}</span>
-                        </span>
-                      );
+                      return renderStackedDate(formattedDate, 'bg-amber-500', true, 'text-amber-800');
                     }
                     if (schedule.kind === 'window') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-800 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                          <span>{formattedDate}</span>
-                        </span>
-                      );
+                      return renderStackedDate(formattedDate, 'bg-emerald-500', false, 'text-emerald-800');
                     }
                     if (schedule.kind === 'event' || schedule.kind === 'program') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
-                          <span>{formattedDate}</span>
-                        </span>
-                      );
+                      return renderStackedDate(formattedDate, 'bg-teal-500', false, 'text-slate-800');
                     }
-                    return (
-                      <span className="text-slate-700 font-medium">{formattedDate}</span>
-                    );
+                    return renderStackedDate(formattedDate, '', false, 'text-slate-800');
                   };
 
                   return (
                     <tr
                       key={item.id}
                       onClick={() => setSelectedResponsibility(item)}
-                      className={`group hover:bg-slate-50/80 transition-colors cursor-pointer ${
-                        options?.isMissed ? 'opacity-90' : ''
-                      }`}
+                      className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
                     >
-                      {/* Column 1: Event / Responsibility */}
-                      <td className="py-3.5 px-4 align-top">
-                        <div className="flex items-start gap-2.5">
-                          <div className="shrink-0 mt-0.5" title={schedule.kind === 'event' ? 'Calendar Commitment' : `Priority: ${item.priority}`}>
-                            {schedule.kind === 'event' ? (
-                              <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs">
-                                <CalendarIcon className="w-2.5 h-2.5" />
-                              </div>
-                            ) : schedule.kind === 'program' ? (
-                              <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[10px] font-bold shadow-2xs">
-                                P
-                              </div>
-                            ) : schedule.kind === 'window' ? (
-                              <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs">
-                                W
-                              </div>
-                            ) : (
-                              renderPriorityDot(item.priority)
+                      {/* Column 1: Source */}
+                      <td className="py-3.5 px-2 align-top text-center">
+                        {renderSourceCell(item)}
+                      </td>
+
+                      {/* Column 2: Event / Responsibility */}
+                      <td className="py-3.5 px-4 align-top text-left">
+                        <div className="space-y-1">
+                          <h3 className="font-semibold text-xs leading-snug line-clamp-2 text-slate-900 group-hover:text-[#34515e] transition-colors">
+                            <span>{titleText}</span>
+                          </h3>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 flex-wrap">
+                            {item.category && (
+                              <span className="capitalize font-semibold text-slate-700">{item.category}</span>
+                            )}
+                            {item.sourceContext?.sender && (
+                              <span className="truncate max-w-[170px] text-slate-600">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
+                            )}
+                            {item.sourceContext?.location && (
+                              <span className="truncate max-w-[140px] text-slate-600">· {item.sourceContext.location}</span>
                             )}
                           </div>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <h3 className={`font-semibold text-xs leading-snug line-clamp-2 transition-colors ${
-                              options?.isMissed ? 'text-slate-500' : 'text-slate-900 group-hover:text-[#34515e]'
-                            }`}>
-                              {titleText}
-                            </h3>
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
-                              {item.category && (
-                                <span className="capitalize font-medium text-slate-600">{item.category}</span>
-                              )}
-                              {item.sourceContext?.sender && (
-                                <span className="truncate max-w-[170px] text-slate-400">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
-                              )}
-                              {item.sourceContext?.location && (
-                                <span className="truncate max-w-[140px] text-slate-400">· {item.sourceContext.location}</span>
-                              )}
+                        </div>
+                      </td>
+
+                      {/* Column 3: Action Required */}
+                      <td className="py-3.5 px-4 align-top text-left cursor-pointer" title="Click to view details" onClick={(e) => { e.stopPropagation(); setSelectedResponsibility(item); }}>
+                        {(() => {
+                          const isInfo = Boolean(options?.isInformative || item.sourceContext?.classification === 'informational');
+                          const derived = deriveSpecificNextStep(item.title, actionText, isInfo);
+                          if (derived.isInformational) {
+                            return (
+                              <div className="flex items-start gap-1.5 text-xs text-slate-500 font-medium leading-snug">
+                                <span className="line-clamp-2 italic">{derived.nextStep}</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex items-start gap-1.5 text-xs text-slate-900 font-medium leading-snug">
+                              <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                              <span className="line-clamp-2 font-medium">{derived.nextStep}</span>
                             </div>
-                          </div>
-                        </div>
+                          );
+                        })()}
                       </td>
 
-                      {/* Column 2: Action Required */}
-                      <td className="py-3.5 px-4 align-top">
-                        {conciseAction ? (
-                          <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug">
-                            <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
-                            <span className="line-clamp-2 font-medium">{conciseAction}</span>
-                          </div>
-                        ) : (options?.isInformative || item.sourceContext?.classification === 'informational') ? (
-                          <span className="text-slate-400 text-xs leading-snug block">No action required</span>
-                        ) : (
-                          <span className="text-slate-400 text-xs italic leading-snug block">Review responsibility</span>
-                        )}
-                      </td>
-
-                      {/* Column 3: Deadline / Date & Time */}
-                      <td className="py-3.5 px-4 align-top">
-                        <div className="text-xs leading-snug">
+                      {/* Column 4: Deadline / Date & Time */}
+                      <td className="py-3.5 px-4 align-top text-center">
+                        <div className="text-xs leading-snug flex items-center justify-center">
                           {renderDateStatus()}
-                        </div>
-                      </td>
-
-                      {/* Column 4: Source (Clickable) */}
-                      <td className="py-3.5 px-4 align-top text-right">
-                        <div className="flex items-center justify-end whitespace-nowrap">
-                          {renderClickableSource(item)}
                         </div>
                       </td>
                     </tr>
@@ -1362,7 +1507,15 @@ const MainDashboard: React.FC = () => {
               const formattedDate = formatRelevantDateText(item, schedule);
               const titleText = formatTitleText(item.title);
               const isTodayDue = schedule.kind === 'deadline' && schedule.diffDays === 0 && !schedule.isPast;
-              const conciseAction = item.sourceContext?.nextStep || item.action;
+              const rawAction = item.sourceContext?.nextStep || item.action;
+              const actionClean = (rawAction || '').trim();
+              const isPassive = !actionClean || 
+                actionClean.toLowerCase() === 'none' || 
+                actionClean.toLowerCase() === 'n/a' || 
+                actionClean.toLowerCase().startsWith('no action') ||
+                actionClean.toLowerCase().includes('no action required') ||
+                actionClean.toLowerCase().startsWith('fyi');
+              const actionText = !isPassive ? actionClean : null;
 
               const renderMobileDate = () => {
                 if (options?.isNoDeadline || formattedDate === 'No deadline') {
@@ -1407,62 +1560,49 @@ const MainDashboard: React.FC = () => {
                 <div
                   key={item.id}
                   onClick={() => setSelectedResponsibility(item)}
-                  className={`p-4 hover:bg-slate-50/70 transition-colors cursor-pointer space-y-2.5 ${
-                    options?.isMissed ? 'opacity-90' : ''
-                  }`}
+                  className="p-4 hover:bg-slate-50/70 transition-colors cursor-pointer space-y-2.5"
                 >
                   {/* Top: Priority + Title + Clickable Source */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                      <div className="shrink-0 mt-0.5">
-                        {schedule.kind === 'event' ? (
-                          <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs">
-                            <CalendarIcon className="w-2.5 h-2.5" />
-                          </div>
-                        ) : schedule.kind === 'program' ? (
-                          <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[10px] font-bold shadow-2xs">
-                            P
-                          </div>
-                        ) : schedule.kind === 'window' ? (
-                          <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs">
-                            W
-                          </div>
-                        ) : (
-                          renderPriorityDot(item.priority)
-                        )}
+                      <div className="shrink-0 pt-0.5">
+                        {renderSourceCell(item)}
                       </div>
                       <div className="min-w-0 flex-1 space-y-0.5">
-                        <h3 className={`text-xs font-semibold leading-snug line-clamp-2 ${
-                          options?.isMissed ? 'text-slate-500' : 'text-slate-900'
-                        }`}>
-                          {titleText}
+                        <h3 className="text-xs font-semibold leading-snug line-clamp-2 text-slate-900">
+                          <span>{titleText}</span>
                         </h3>
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 flex-wrap">
                           {item.category && (
-                            <span className="capitalize font-medium text-slate-600">{item.category}</span>
+                            <span className="capitalize font-semibold text-slate-700">{item.category}</span>
                           )}
                           {item.sourceContext?.sender && (
-                            <span className="truncate max-w-[150px] text-slate-400">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
+                            <span className="truncate max-w-[150px] text-slate-600">· {item.sourceContext.sender.replace(/<.*>/, '').trim()}</span>
                           )}
                         </div>
                       </div>
                     </div>
-                    <div className="shrink-0" onClick={e => e.stopPropagation()}>
-                      {renderClickableSource(item)}
-                    </div>
+
                   </div>
 
                   {/* Action Required */}
-                  {conciseAction ? (
-                    <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug pl-6.5">
-                      <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
-                      <span className="line-clamp-2 font-medium">{conciseAction}</span>
-                    </div>
-                  ) : (options?.isInformative || item.sourceContext?.classification === 'informational') ? (
-                    <div className="text-xs text-slate-400 pl-6.5">
-                      <span>No action required</span>
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const isInfo = Boolean(options?.isInformative || item.sourceContext?.classification === 'informational');
+                    const derived = deriveSpecificNextStep(item.title, actionText, isInfo);
+                    if (derived.isInformational) {
+                      return (
+                        <div className="flex items-start gap-1.5 text-xs text-slate-500 font-medium leading-snug pl-6.5">
+                          <span className="line-clamp-2 italic">{derived.nextStep}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex items-start gap-1.5 text-xs text-slate-900 font-medium leading-snug pl-6.5">
+                        <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                        <span className="line-clamp-2 font-medium">{derived.nextStep}</span>
+                      </div>
+                    );
+                  })()}
 
                   {/* Deadline / Date & Time */}
                   <div className="text-xs pl-6.5 pt-0.5">
@@ -1478,30 +1618,16 @@ const MainDashboard: React.FC = () => {
 
     return (
       <div className="space-y-8">
-        {/* Page Header with Automatic Background Sync Status */}
+        {/* Page Header */}
         <div className="pb-5 border-b border-slate-200/80 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-                <CheckSquare className="w-6 h-6 text-[#34515e]" />
-                Your Responsibilities
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">
-                LifeSynch analyzes complete Gmail messages and Calendar commitments to prioritize what you actually need to do.
-              </p>
-            </div>
-
-            {/* Subtle Real-time Connection / Sync Status */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 font-medium shadow-2xs">
-                <span className={`w-1.5 h-1.5 rounded-full ${syncError ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                <span>
-                  {syncError 
-                    ? 'Sync paused' 
-                    : `Auto-sync active · ${lastSyncTime ? formatRelativeTime(lastSyncTime.toISOString()) : 'just now'}`}
-                </span>
-              </span>
-            </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+              <CheckSquare className="w-6 h-6 text-[#34515e]" />
+              Your Responsibilities
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              LifeSynch analyzes complete Gmail messages and Calendar commitments to prioritize what you actually need to do.
+            </p>
           </div>
 
           {/* Section Indicators - Clean 4-card overview matching reference design */}
@@ -1578,7 +1704,7 @@ const MainDashboard: React.FC = () => {
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-slate-900 tracking-wide truncate">INFORMATIVE</div>
-                  <div className="text-[11px] text-slate-500 truncate">No action required</div>
+                  <div className="text-[11px] text-slate-500 truncate">Updates, announcements and useful information</div>
                 </div>
               </div>
               <span className="text-base font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 shrink-0">
@@ -1617,33 +1743,7 @@ const MainDashboard: React.FC = () => {
 
         {/* 2. UPCOMING */}
         <section id="section-upcoming" className="space-y-3 scroll-mt-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-            {/* Sub-filter tabs styled with deep teal active and clean pill layout */}
-            <div className="flex items-center gap-1.5 self-start sm:self-auto">
-              {(
-                [
-                  { id: 'all', label: 'All' },
-                  { id: 'deadlines', label: 'Deadlines' },
-                  { id: 'windows', label: 'App Windows' },
-                  { id: 'events', label: 'Events / Meetings' }
-                ] as const
-              ).map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setUpcomingFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                    upcomingFilter === tab.id
-                      ? 'bg-[#34515e] text-white shadow-2xs'
-                      : 'bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {filteredUpcomingList.length === 0 ? (
+          {upcomingList.length === 0 ? (
             <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
               <div className="px-5 py-3.5 bg-[#34515e] border-b border-[#283e48] flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1656,13 +1756,11 @@ const MainDashboard: React.FC = () => {
                 <p className="hidden sm:block text-xs text-slate-200/90 font-normal">Tomorrow & future commitments</p>
               </div>
               <div className="p-5 text-xs text-slate-500 text-center">
-                {upcomingFilter === 'all' 
-                  ? 'No upcoming responsibilities scheduled.' 
-                  : `No upcoming ${upcomingFilter} found.`}
+                No upcoming responsibilities scheduled.
               </div>
             </div>
           ) : (
-            renderResponsibilityTable(filteredUpcomingList, {
+            renderResponsibilityTable(upcomingList, {
               title: 'Upcoming',
               subtext: 'Tomorrow & future commitments',
               icon: <CalendarIcon className="w-4 h-4 text-white" />
@@ -1688,7 +1786,7 @@ const MainDashboard: React.FC = () => {
             {renderResponsibilityTable(informationalTasks, { 
               isInformative: true,
               title: 'Informative',
-              subtext: 'Information updates — no action required',
+              subtext: 'Updates, announcements and useful information',
               icon: <Mail className="w-4 h-4 text-white" />
             })}
           </section>
@@ -1731,9 +1829,26 @@ const MainDashboard: React.FC = () => {
       emailCount={emails.length}
       reminders={reminders}
       onMarkReminderAsRead={handleMarkReminderAsRead}
+      onMarkAllRemindersAsRead={handleMarkAllRemindersAsRead}
       isSyncing={isSyncing}
       onTriggerSync={() => triggerGoogleSync()}
       syncError={syncError}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      tasks={tasks}
+      calendarEvents={calendarEvents}
+      emails={emails}
+      onSelectResponsibility={setSelectedResponsibility}
+      onSelectCalendarEvent={setSelectedCalendarEvent}
+      onSelectEmail={handleOpenEmailById}
+      onSubmitSearch={(q) => {
+        setSearchQuery(q);
+        setActiveTab('search');
+      }}
+      onClearSearch={() => {
+        setSearchQuery('');
+        if (activeTab === 'search') setActiveTab('dashboard');
+      }}
     >
 
 
@@ -1778,7 +1893,24 @@ const MainDashboard: React.FC = () => {
       )}
 
       {/* Main Tab Content */}
-      {activeTab === 'gmail' ? (
+      {activeTab === 'search' ? (
+        <GlobalSearchResultsView
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onSearchChange={setSearchQuery}
+          onClearSearch={() => {
+            setSearchQuery('');
+            setActiveTab('dashboard');
+          }}
+          onBackToDashboard={() => setActiveTab('dashboard')}
+          onSelectResponsibility={setSelectedResponsibility}
+          onSelectEmail={(emailId) => {
+            setExpandedEmailId(emailId);
+            setActiveTab('gmail');
+          }}
+          onSelectCalendarEvent={setSelectedCalendarEvent}
+        />
+      ) : activeTab === 'gmail' ? (
         /* ================= GMAIL DEDICATED VIEW ================= */
         <div className="space-y-6">
           {gmailView === 'inbox' ? (
@@ -1837,7 +1969,12 @@ const MainDashboard: React.FC = () => {
                     return (
                       <div
                         key={email.id}
-                        className="rounded-2xl bg-white border border-slate-200/90 hover:border-[#34515e]/40 shadow-xs transition-all overflow-hidden"
+                        id={`email-item-${email.id}`}
+                        className={`rounded-2xl bg-white border transition-all overflow-hidden shadow-xs ${
+                          isExpanded 
+                            ? 'border-[#34515e] ring-1 ring-[#34515e]/20' 
+                            : 'border-slate-200/90 hover:border-[#34515e]/40'
+                        }`}
                       >
                         {/* Email Row */}
                         <div
@@ -2150,10 +2287,7 @@ const MainDashboard: React.FC = () => {
               emails={emails}
               calendarEvents={calendarEvents}
               onSelectResponsibility={setSelectedResponsibility}
-              onSelectEmail={(emailId) => {
-                setExpandedEmailId(emailId);
-                setActiveTab('gmail');
-              }}
+              onSelectEmail={handleOpenEmailById}
               onSelectCalendarEvent={() => {
                 setActiveTab('calendar');
               }}
@@ -2188,16 +2322,17 @@ const MainDashboard: React.FC = () => {
         />
       )}
 
-      {/* Floating Action Button (FAB) matching reference image */}
-      {activeTab !== 'assistant' && (
-        <button
-          onClick={() => handleAskQuestion('What should I focus on today?')}
-          title="Ask LifeSynch AI"
-          aria-label="Ask LifeSynch"
-          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#34515e] hover:bg-[#283e48] text-white shadow-xl shadow-[#34515e]/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40 cursor-pointer"
-        >
-          <span className="text-xl font-bold leading-none">+</span>
-        </button>
+
+      {/* ── Calendar Event Details Modal ── */}
+      {selectedCalendarEvent && (
+        <CalendarEventModal
+          event={selectedCalendarEvent}
+          onClose={() => setSelectedCalendarEvent(null)}
+          onOpenCalendarTab={() => {
+            setSelectedCalendarEvent(null);
+            setActiveTab('calendar');
+          }}
+        />
       )}
 
       {/* ── Responsibility Details Modal (Clicking any row opens details) ── */}
@@ -2207,10 +2342,11 @@ const MainDashboard: React.FC = () => {
           onClick={() => setSelectedResponsibility(null)}
         >
           <div 
-            className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4 text-slate-800"
+            className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4 text-slate-800 max-h-[85vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider">
                   Responsibility Details
@@ -2227,95 +2363,107 @@ const MainDashboard: React.FC = () => {
               </button>
             </div>
 
-            {selectedResponsibility.action && (
-              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1">
-                <span className="text-xs font-bold text-amber-800 uppercase tracking-wider block">Action Required</span>
-                <div className="flex items-center gap-2 pt-0.5">
-                  {renderPriorityDot(selectedResponsibility.priority)}
-                  <p className="text-xs sm:text-sm font-medium text-slate-900">{selectedResponsibility.action}</p>
+            {/* Scrollable Modal Body */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+              {selectedResponsibility.action && (
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1.5">
+                  <span className="text-xs font-bold text-amber-800 uppercase tracking-wider block">Action Required</span>
+                  <div className="pt-0.5 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-1 text-xs sm:text-sm font-medium text-slate-900">
+                    <p>{selectedResponsibility.action}</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedResponsibility.sourceContext?.nextStep && (
+                <div className="p-3.5 rounded-2xl bg-[#e2edf2]/60 border border-[#d2e5ed] space-y-1.5">
+                  <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider block">Recommended Next Step</span>
+                  <div className="max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-1 text-xs sm:text-sm font-medium text-slate-800">
+                    <p>{selectedResponsibility.sourceContext.nextStep}</p>
+                  </div>
+                </div>
+              )}
+
+              {(selectedResponsibility.sourceContext?.windowStartDate || selectedResponsibility.sourceContext?.windowEndDate) && (
+                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200 text-xs text-purple-900 flex items-center justify-between">
+                  <span className="text-purple-700 font-semibold">Application Window:</span>
+                  <span className="font-bold">{selectedResponsibility.sourceContext.windowStartDate || 'Opens'} → {selectedResponsibility.sourceContext.windowEndDate || selectedResponsibility.dueDate}</span>
+                </div>
+              )}
+
+              {(() => {
+                const modalDesc = getResponsibilityDescription(selectedResponsibility);
+                if (!modalDesc) return null;
+                return (
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider block">Description</span>
+                    <div className="max-h-52 overflow-y-auto whitespace-pre-wrap leading-relaxed bg-slate-50 p-3.5 rounded-2xl border border-slate-200 pr-2 text-xs sm:text-sm text-slate-800 font-sans">
+                      <p>{modalDesc}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block mb-1">Due Date</span>
+                  <span className="text-slate-800 font-semibold">
+                    {formatTableDueDate(selectedResponsibility.dueDate, selectedResponsibility.dueTime)}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block mb-1">Status</span>
+                  <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold border ${getModalStatus(selectedResponsibility, currentTime).color}`}>
+                    {getModalStatus(selectedResponsibility, currentTime).label}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block mb-1">Source</span>
+                  <div className="pt-0.5 flex items-center justify-center">
+                    {renderSourceCell(selectedResponsibility)}
+                  </div>
                 </div>
               </div>
-            )}
 
-            {selectedResponsibility.sourceContext?.nextStep && (
-              <div className="p-3.5 rounded-2xl bg-[#e2edf2]/60 border border-[#d2e5ed] space-y-1">
-                <span className="text-xs font-bold text-[#34515e] uppercase tracking-wider block">Recommended Next Step</span>
-                <p className="text-xs sm:text-sm font-medium text-slate-800">{selectedResponsibility.sourceContext.nextStep}</p>
-              </div>
-            )}
-
-            {(selectedResponsibility.sourceContext?.windowStartDate || selectedResponsibility.sourceContext?.windowEndDate) && (
-              <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200 text-xs text-purple-900 flex items-center justify-between">
-                <span className="text-purple-700 font-semibold">Application Window:</span>
-                <span className="font-bold">{selectedResponsibility.sourceContext.windowStartDate || 'Opens'} → {selectedResponsibility.sourceContext.windowEndDate || selectedResponsibility.dueDate}</span>
-              </div>
-            )}
-
-            {selectedResponsibility.description && (
-              <div className="space-y-1">
-                <span className="text-xs font-semibold text-slate-500">Description</span>
-                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                  {selectedResponsibility.description}
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
-              <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-500 block mb-1">Due Date</span>
-                <span className="text-slate-800 font-semibold">
-                  {formatTableDueDate(selectedResponsibility.dueDate, selectedResponsibility.dueTime)}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-500 block mb-1">Status</span>
-                <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold border ${getModalStatus(selectedResponsibility, currentTime).color}`}>
-                  {getModalStatus(selectedResponsibility, currentTime).label}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-500 block mb-1">Source</span>
-                <div className="pt-0.5">{renderSourceCell(selectedResponsibility)}</div>
-              </div>
+              {(selectedResponsibility.sourceContext?.sender || selectedResponsibility.sourceContext?.location || selectedResponsibility.sourceContext?.responsibleParty) && (
+                <div className="space-y-1 text-xs pt-1">
+                  {selectedResponsibility.sourceContext?.responsibleParty && (
+                    <p className="text-slate-600">
+                      <span className="text-slate-400 font-medium">Responsible:</span> <span className="capitalize text-slate-800 font-medium">{selectedResponsibility.sourceContext.responsibleParty}</span>
+                    </p>
+                  )}
+                  {selectedResponsibility.sourceContext?.sender && (
+                    <p className="text-slate-600">
+                      <span className="text-slate-400 font-medium">From:</span> {selectedResponsibility.sourceContext.sender}
+                    </p>
+                  )}
+                  {selectedResponsibility.sourceContext?.location && (
+                    <p className="text-slate-600">
+                      <span className="text-slate-400 font-medium">Location:</span> {selectedResponsibility.sourceContext.location}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
-            {(selectedResponsibility.sourceContext?.sender || selectedResponsibility.sourceContext?.location || selectedResponsibility.sourceContext?.responsibleParty) && (
-              <div className="space-y-1 text-xs pt-1">
-                {selectedResponsibility.sourceContext?.responsibleParty && (
-                  <p className="text-slate-600">
-                    <span className="text-slate-400 font-medium">Responsible:</span> <span className="capitalize text-slate-800 font-medium">{selectedResponsibility.sourceContext.responsibleParty}</span>
-                  </p>
-                )}
-                {selectedResponsibility.sourceContext?.sender && (
-                  <p className="text-slate-600">
-                    <span className="text-slate-400 font-medium">From:</span> {selectedResponsibility.sourceContext.sender}
-                  </p>
-                )}
-                {selectedResponsibility.sourceContext?.location && (
-                  <p className="text-slate-600">
-                    <span className="text-slate-400 font-medium">Location:</span> {selectedResponsibility.sourceContext.location}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2">
-                {selectedResponsibility.source === 'gmail' && selectedResponsibility.sourceId && (
+                {(selectedResponsibility.source === 'gmail' || selectedResponsibility.source === 'both' || selectedResponsibility.sources?.includes('gmail') || Boolean(selectedResponsibility.sourceContext?.sender)) && (
                   <button
+                    type="button"
                     onClick={() => {
-                      setActiveTab('gmail');
-                      setExpandedEmailId(selectedResponsibility.sourceId || null);
+                      handleOpenEmailForTask(selectedResponsibility);
                       setSelectedResponsibility(null);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50/80 hover:bg-rose-100/80 text-rose-800 border border-rose-200/80 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                   >
                     <Mail className="w-3.5 h-3.5 text-rose-500" />
-                    View Source in Gmail
+                    View Mail
                   </button>
                 )}
-                {selectedResponsibility.source === 'calendar' && (
+                {(selectedResponsibility.source === 'calendar' || selectedResponsibility.source === 'both' || selectedResponsibility.sources?.includes('calendar') || Boolean(selectedResponsibility.sourceContext?.calendarEventId)) && (
                   <button
+                    type="button"
                     onClick={() => {
                       setActiveTab('calendar');
                       setSelectedResponsibility(null);
@@ -2328,6 +2476,7 @@ const MainDashboard: React.FC = () => {
                 )}
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedResponsibility(null)}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
               >

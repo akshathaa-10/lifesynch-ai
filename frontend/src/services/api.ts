@@ -170,6 +170,7 @@ export const apiClient = {
   getReminders: () => request<ReminderNotification[]>('/api/v1/reminders'),
   generateReminders: () => request<ReminderSyncSummary>('/api/v1/reminders/generate', { method: 'POST' }),
   markReminderAsRead: (id: string) => request<void>(`/api/v1/reminders/${id}/read`, { method: 'PATCH' }),
+  markAllRemindersAsRead: () => request<void>('/api/v1/reminders/read-all', { method: 'PATCH' }),
 
   // Conversational Assistant
   askAssistant: (question: string, history?: ChatMessage[], timezone?: string) =>

@@ -21,7 +21,9 @@ import {
   normalizePriority,
   determineIntelligentPriority,
   isInformationalEmailNotResponsibility,
-  sanitizeTaskDeadline
+  sanitizeTaskDeadline,
+  cleanEmailDescription,
+  deriveSpecificNextStep
 } from './responsibility-matcher';
 
 export class ResponsibilityGenerationService {
@@ -319,17 +321,38 @@ CRITICAL EXTRACTION & CLASSIFICATION RULES:
    - Date without time: If an explicit deadline date is provided with no time, set "dueDate" to that date and "dueTime": null. NEVER invent a fictional time.
    - All-day Calendar events: Set "dueDate" to the event date and "dueTime": null.
    - No known deadline: Set "dueDate": null and "dueTime": null. NEVER guess or hallucinate a deadline.
-5. CONCISE NEXT STEP & NATURAL WORDING:
-   - Provide a clear, concise "nextStep" explaining what the user should do next (e.g. "Submit final term paper on LMS", "Upload document on portal before 5 PM").
-   - For events, use natural phrasing: "Attend [event]", "Join [meeting]".
-6. GMAIL + CALENDAR RECONCILIATION:
+5. MEANINGFUL RECOMMENDED NEXT ACTION (CRITICAL):
+   - You MUST understand the actual email or calendar event before generating the recommended action.
+   - Generate a short, specific, and meaningful next step.
+   - For example:
+     * Instead of "Updates" -> "Review the updated placement schedule."
+     * Instead of "Announcements" -> "Check the examination timetable and note the important dates."
+     * Instead of "Useful Information" -> "Review the shared document for important instructions."
+     * For meetings/sessions -> "Attend scheduled project review meeting."
+     * For payments -> "Pay pending tuition fee before deadline."
+     * For applications -> "Submit completed application form on portal."
+   - If no action is required, clearly identify it as informational rather than inventing an action:
+     * Set "actionRequired": false
+     * Set "classification": "informational"
+     * Set "nextStep": "Informational notice — no action required"
+     * Set "action": "Informational notice — no action required"
+   - NEVER generate generic single-word or vague recommendations (such as "Updates", "Announcements", "Useful Information", "Review", "Check", "Action required", "None", "N/A") just to fill the field.
+6. NATURAL, USER-FRIENDLY AI DESCRIPTIONS (CRITICAL):
+   - Convert raw email content and calendar event details into a clear, natural, and user-friendly explanation in plain English.
+   - STRIP ALL forwarded-message headers (e.g. "---------- Forwarded message ---------", "From:", "Date:", "Subject:", "To:"), email signatures ("Best regards", "Thanks & Regards", "Sent from my iPhone"), HTML artifacts, and repetitive content.
+   - Explain what the email/event is about and why it matters.
+   - Clearly explain what the user needs to do, if an action is required.
+   - Keep descriptions concise, professional, and easy to understand (2 to 4 sentences).
+   - Preserve all important information such as names, dates, deadlines, amounts, and instructions.
+   - NEVER invent information or change the original meaning.
+7. GMAIL + CALENDAR RECONCILIATION:
    If a Gmail message and a Calendar event refer to the same obligation, combine them into ONE single responsibility with "sourceType": "both", "sources": ["gmail", "calendar"].
-7. DEADLINE URGENCY & PRIORITY:
+8. DEADLINE URGENCY & PRIORITY:
    - Due today / due tomorrow (<= 48 hours away): High urgency -> 'high' priority.
    - Due later (within 3-7 days): Medium urgency -> 'medium' priority (or 'high' if high-stakes obligation like exam, viva, placement).
    - Due much later (> 14 days): Lower urgency -> 'low' priority.
    - No deadline: Priority based on obligation importance.
-8. CATEGORY: Exactly one of: 'academic', 'work', 'personal', 'finance', 'meeting', 'deadline', 'general'.
+9. CATEGORY: Exactly one of: 'academic', 'work', 'personal', 'finance', 'meeting', 'deadline', 'general'.
 
 SOURCES:
 GOOGLE CALENDAR EVENTS (${calendarSummaries.length} items):
@@ -413,6 +436,16 @@ OUTPUT SCHEMA (Must be valid JSON):
 
     // 8. Match and Deduplicate against existing stored responsibilities
     for (const extracted of deduplicatedTasks) {
+      // Clean description to remove forwarded message headers, HTML, and signatures
+      extracted.description = cleanEmailDescription(extracted.description);
+      // Ensure specific, meaningful next steps (prevent generic "Updates", "Announcements", etc.)
+      const isInformativeItem = extracted.classification === 'informational' || !extracted.actionRequired;
+      const derivedStep = deriveSpecificNextStep(extracted.title, extracted.nextStep || extracted.action, isInformativeItem);
+      extracted.nextStep = derivedStep.nextStep;
+      if (!extracted.action || /^(updates?|announcements?|useful information|review|check|n\/a|none)$/i.test(extracted.action.trim())) {
+        extracted.action = derivedStep.nextStep;
+      }
+
       // Priority Intelligence: strictly do not create responsibilities for ordinary informational emails,
       // but keep useful future events, programs, and application windows in Upcoming Commitments
       const isUsefulEventOrOpportunity = 

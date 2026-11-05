@@ -11,6 +11,8 @@ export interface ReminderNotification {
   dueDate?: string;
   dueTime?: string;
   createdAt: string;
+  category?: 'deadline' | 'email' | 'calendar' | 'system';
+  targetId?: string;
 }
 
 // Alias for convenience
@@ -47,7 +49,6 @@ export function formatDateDisplay(isoDate?: string | null): string {
   if (isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString('en-US', {
     month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC'
+    day: 'numeric'
   });
 }

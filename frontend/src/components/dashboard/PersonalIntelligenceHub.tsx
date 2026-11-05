@@ -1,3 +1,4 @@
+import { cleanEmailDescription, deriveSpecificNextStep } from '../../utils/textUtils';
 import React, { useState, useMemo } from 'react';
 import { 
   Sparkles, 
@@ -141,22 +142,45 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
     }
   };
 
-  // Open item source
+  // Open item source as full Responsibility Details
   const handleItemClick = (item: ClassifiedLifeItem) => {
     if (item.rawResponsibility) {
-      onSelectResponsibility(item.rawResponsibility);
-    } else if (item.rawEmail) {
-      setPreviewEmail(item.rawEmail);
-    } else if (item.rawCalendarEvent) {
-      if (item.rawCalendarEvent.htmlLink) {
-        window.open(item.rawCalendarEvent.htmlLink, '_blank', 'noopener,noreferrer');
-      } else if (onSelectCalendarEvent) {
-        onSelectCalendarEvent(item.rawCalendarEvent.id);
-      } else {
-        setPreviewEvent(item.rawCalendarEvent);
+      const resp: Responsibility = { ...item.rawResponsibility };
+      if (!resp.description && (item.summary || item.rawEmail?.snippet || item.rawCalendarEvent?.description)) {
+        resp.description = item.summary || item.rawCalendarEvent?.description || item.rawEmail?.snippet || '';
       }
-    } else if (item.sourceType === 'gmail' && item.sourceId) {
-      onSelectEmail(item.sourceId);
+      onSelectResponsibility(resp);
+    } else {
+      // Synthesize a complete Responsibility record so EVERY category item
+      // opens the full Responsibility Details page
+      const synthesizedResp: Responsibility = {
+        id: item.responsibilityId || item.id,
+        userId: '',
+        title: item.title,
+        description: cleanEmailDescription(item.summary || item.rawCalendarEvent?.description || item.rawEmail?.bodyText || item.rawEmail?.snippet || (item.rawCalendarEvent?.location ? `Scheduled event at ${item.rawCalendarEvent.location}` : '')),
+        type: item.itemType === 'event' ? 'appointment' : 'task',
+        priority: 'medium',
+        status: 'pending',
+        category: mapLifeCategoryToTaskCategory(item.category),
+        dueDate: item.date,
+        dueTime: item.time,
+        action: item.rawCalendarEvent ? 'Attend scheduled event' : (item.actionRequired ? 'Review and take action' : undefined),
+        source: item.sourceType === 'calendar' ? 'calendar' : 'gmail',
+        sourceId: item.sourceId,
+        sourceContext: {
+          sender: item.sender,
+          location: item.location,
+          snippet: item.summary || item.rawEmail?.snippet,
+          subject: item.title,
+          calendarEventId: item.rawCalendarEvent?.id || item.rawCalendarEvent?.eventId
+        },
+        confidence: 1,
+        tags: [],
+        isArchived: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      onSelectResponsibility(synthesizedResp);
     }
   };
 
@@ -208,6 +232,183 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
       activeSections.passed.length +
       activeSections.informative.length;
 
+    const renderCategoryItemSourceCell = (item: ClassifiedLifeItem) => {
+      const isBoth = item.rawResponsibility?.source === 'both' ||
+        (Boolean(item.rawResponsibility?.sourceContext?.calendarEventId) && Boolean(item.rawResponsibility?.sourceContext?.sender)) ||
+        (item.rawResponsibility?.sources?.includes('calendar') && item.rawResponsibility?.sources?.includes('gmail'));
+      const isCal = !isBoth && (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar');
+
+      if (isBoth) {
+        return (
+          <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
+            <span 
+              title="Gmail" 
+              className="inline-flex items-center justify-center text-rose-500 hover:scale-110 transition-transform cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (item.sourceId) onSelectEmail(item.sourceId);
+                else handleItemClick(item);
+              }}
+            >
+              <Mail className="w-3.5 h-3.5" />
+            </span>
+            <span 
+              title="Google Calendar" 
+              className="inline-flex items-center justify-center text-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleItemClick(item);
+              }}
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        );
+      }
+
+      if (isCal) {
+        return (
+          <div className="flex flex-col items-center justify-center pt-0.5">
+            <span 
+              title="Google Calendar" 
+              className="inline-flex items-center justify-center text-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleItemClick(item);
+              }}
+            >
+              <CalendarIcon className="w-4 h-4" />
+            </span>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col items-center justify-center pt-0.5">
+          <span 
+            title="Gmail" 
+            className="inline-flex items-center justify-center text-rose-500 hover:scale-110 transition-transform cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.sourceId) onSelectEmail(item.sourceId);
+              else handleItemClick(item);
+            }}
+          >
+            <Mail className="w-4 h-4" />
+          </span>
+        </div>
+      );
+    };
+
+    const renderStackedDate = (
+      rawDateStr: string,
+      dotColor?: string,
+      animatePulse?: boolean,
+      textColor: string = 'text-slate-800'
+    ) => {
+      if (!rawDateStr || rawDateStr === 'No deadline') {
+        return <span className="text-slate-600 font-medium">No deadline</span>;
+      }
+
+      let datePart = rawDateStr;
+      let timePart = '';
+
+      if (rawDateStr.includes(' · ')) {
+        const parts = rawDateStr.split(' · ');
+        datePart = parts[0].trim();
+        timePart = parts.slice(1).join(' · ').trim();
+      } else if (rawDateStr.includes(' • ')) {
+        const parts = rawDateStr.split(' • ');
+        datePart = parts[0].trim();
+        timePart = parts.slice(1).join(' • ').trim();
+      }
+
+      return (
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className={`inline-flex items-center gap-1.5 font-medium leading-tight ${textColor}`}>
+            {dotColor && (
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${animatePulse ? 'animate-pulse' : ''}`} />
+            )}
+            <span className="whitespace-nowrap">{datePart}</span>
+          </div>
+          {timePart && (
+            <span className="text-[11px] text-slate-600 font-normal mt-0.5 whitespace-nowrap">
+              {timePart}
+            </span>
+          )}
+        </div>
+      );
+    };
+
+    const getItemActionAndDescription = (
+      item: ClassifiedLifeItem, 
+      sectionKey?: ResponsibilitySection
+    ): { 
+      actionText: string | null; 
+      isInformational: boolean;
+    } => {
+      const resp = item.rawResponsibility;
+      const cal = item.rawCalendarEvent;
+      const email = item.rawEmail;
+
+      // 1. Resolve explicit actionable next step or action required
+      const rawAction = resp?.sourceContext?.nextStep || resp?.action;
+      const actionClean = (rawAction || '').trim();
+
+      const isPassiveAction = 
+        !actionClean || 
+        actionClean.toLowerCase() === 'none' || 
+        actionClean.toLowerCase() === 'n/a' || 
+        actionClean.toLowerCase().startsWith('no action') ||
+        actionClean.toLowerCase().includes('no action required') ||
+        actionClean.toLowerCase().includes('informational only') ||
+        actionClean.toLowerCase().startsWith('fyi');
+
+      const actionText = !isPassiveAction ? actionClean : null;
+
+      // 2. Resolve meaningful description explaining what the event is about from actual extracted data
+      let descriptionText: string | null = null;
+
+      const candidateDesc = 
+        resp?.description || 
+        cal?.description || 
+        item.summary || 
+        resp?.sourceContext?.snippet || 
+        email?.snippet || 
+        email?.bodyText || 
+        null;
+
+      if (candidateDesc) {
+        const clean = candidateDesc.replace(/\s+/g, ' ').trim();
+        // Only use if it adds context and is not identical to the actionText or title
+        if (
+          clean && 
+          clean.toLowerCase() !== (actionText || '').toLowerCase() &&
+          clean.toLowerCase() !== item.title.toLowerCase()
+        ) {
+          descriptionText = clean;
+        }
+      }
+
+      // Fallback for calendar events without description: explain meeting context from location
+      if (!descriptionText && cal) {
+        if (cal.location) {
+          descriptionText = `Scheduled event at ${cal.location}`;
+        } else {
+          descriptionText = 'Scheduled event on your calendar';
+        }
+      }
+
+      // 3. Determine if informational
+      const isInformational = 
+        sectionKey === 'informative' || 
+        resp?.sourceContext?.classification === 'informational' || 
+        resp?.sourceContext?.classification === 'program_schedule' ||
+        (!actionText && Boolean(descriptionText));
+
+      return { actionText, isInformational };
+    };
+
     const renderSectionBlock = (
       sectionKey: ResponsibilitySection,
       sectionTitle: string,
@@ -245,48 +446,31 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
               <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                   <tr className="border-b border-slate-200 bg-[#f0f5f8] text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    <th className="py-3 px-4 w-[36%] text-left font-bold">Event / Responsibility</th>
-                    <th className="py-3 px-4 w-[26%] text-left font-bold">Action Required / Summary</th>
-                    <th className="py-3 px-4 w-[22%] text-left font-bold">Deadline / Date & Time</th>
-                    <th className="py-3 px-4 w-[16%] text-right font-bold">Source</th>
+                    <th className="py-3 px-2 w-12 text-center font-bold" title="Source">Source</th>
+                    <th className="py-3 px-4 w-[46%] text-center font-bold">Event / Responsibility</th>
+                    <th className="py-3 px-4 w-[34%] text-center font-bold">Action Required</th>
+                    <th className="py-3 px-4 w-[18%] text-center font-bold">Deadline / Date & Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {sectionItems.map(item => {
                     const formattedDate = item.formattedScheduleText;
-                    const conciseAction = item.rawResponsibility?.sourceContext?.nextStep || item.rawResponsibility?.action;
+                    const { actionText, isInformational } = getItemActionAndDescription(item, sectionKey);
 
                     const renderDateStatus = () => {
                       if (formattedDate === 'No deadline') {
-                        return <span className="text-slate-400">{formattedDate}</span>;
+                        return <span className="text-slate-600 font-medium">No deadline</span>;
                       }
                       if (sectionKey === 'passed') {
-                        return (
-                          <span className="inline-flex items-center gap-1.5 text-rose-700 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                            <span>{formattedDate}</span>
-                          </span>
-                        );
+                        return renderStackedDate(formattedDate, 'bg-rose-400', false, 'text-rose-700');
                       }
                       if (sectionKey === 'yourDay') {
-                        return (
-                          <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-                            <span>{formattedDate}</span>
-                          </span>
-                        );
+                        return renderStackedDate(formattedDate, 'bg-amber-500', true, 'text-amber-800');
                       }
                       if (sectionKey === 'upcoming') {
-                        return (
-                          <span className="inline-flex items-center gap-1.5 text-slate-700 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                            <span>{formattedDate}</span>
-                          </span>
-                        );
+                        return renderStackedDate(formattedDate, 'bg-teal-500', false, 'text-slate-800');
                       }
-                      return (
-                        <span className="text-slate-500 font-medium">{formattedDate}</span>
-                      );
+                      return renderStackedDate(formattedDate, '', false, 'text-slate-800');
                     };
 
                     return (
@@ -295,114 +479,59 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                         onClick={() => handleItemClick(item)}
                         className="group hover:bg-slate-50/70 transition-colors cursor-pointer"
                       >
-                        {/* Column 1: Event / Responsibility */}
-                        <td className="py-3.5 px-4 align-top">
-                          <div className="flex items-start gap-2.5">
-                            <div className="shrink-0 mt-0.5">
-                              {item.itemType === 'event' ? (
-                                <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs" title="Event / Commitment">
-                                  <CalendarIcon className="w-2.5 h-2.5" />
-                                </div>
-                              ) : item.itemType === 'application' ? (
-                                <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs" title="Opportunity / Window">
-                                  W
-                                </div>
-                              ) : (
-                                <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold shadow-2xs">
-                                  •
-                                </div>
+                        {/* Column 1: Source */}
+                        <td className="py-3.5 px-2 align-top text-center">
+                          {renderCategoryItemSourceCell(item)}
+                        </td>
+
+                        {/* Column 2: Event / Responsibility */}
+                        <td className="py-3.5 px-4 align-top text-left">
+                          <div className="space-y-1">
+                            <h3 className="font-semibold text-xs text-slate-900 group-hover:text-[#34515e] transition-colors leading-snug line-clamp-2">
+                              <span>{item.title}</span>
+                            </h3>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-600 flex-wrap">
+                              {item.sender && (
+                                <span className="truncate max-w-[170px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>
+                              )}
+                              {item.location && (
+                                <span className="truncate max-w-[140px]">· {item.location}</span>
                               )}
                             </div>
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <h3 className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
-                                {item.title}
-                              </h3>
-                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
-                                {item.sender && (
-                                  <span className="truncate max-w-[170px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>
-                                )}
-                                {item.location && (
-                                  <span className="truncate max-w-[140px]">· {item.location}</span>
-                                )}
-                              </div>
-                            </div>
                           </div>
                         </td>
 
-                        {/* Column 2: Action Required / Summary */}
-                        <td className="py-3.5 px-4 align-top">
-                          {conciseAction ? (
-                            <div className="flex items-start gap-1.5 text-xs text-slate-800 leading-snug">
-                              <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-                              <span className="leading-snug line-clamp-2 font-medium">{conciseAction}</span>
-                            </div>
-                          ) : item.summary ? (
-                            <p className="text-slate-600 text-xs leading-snug line-clamp-2">{item.summary}</p>
-                          ) : sectionKey === 'informative' ? (
-                            <span className="text-slate-400 text-xs leading-snug block">No action required</span>
-                          ) : (
-                            <span className="text-slate-400 text-xs italic leading-snug block">Review responsibility</span>
-                          )}
+                        {/* Column 3: Action Required */}
+                        <td 
+                          className="py-3.5 px-4 align-top text-left cursor-pointer" 
+                          title="Click to view complete details"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleItemClick(item);
+                          }}
+                        >
+                          {(() => {
+                            const derived = deriveSpecificNextStep(item.title, actionText, isInformational);
+                            if (derived.isInformational) {
+                              return (
+                                <div className="flex items-start gap-1.5 text-xs text-slate-500 font-medium leading-snug">
+                                  <span className="line-clamp-2 italic">{derived.nextStep}</span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex items-start gap-1.5 text-xs text-slate-900 font-medium leading-snug">
+                                <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                                <span className="line-clamp-2 font-medium">{derived.nextStep}</span>
+                              </div>
+                            );
+                          })()}
                         </td>
 
-                        {/* Column 3: Deadline / Date & Time */}
-                        <td className="py-3.5 px-4 align-top">
-                          <div className="text-xs leading-snug">
+                        {/* Column 4: Deadline / Date & Time */}
+                        <td className="py-3.5 px-4 align-top text-center">
+                          <div className="text-xs leading-snug flex items-center justify-center">
                             {renderDateStatus()}
-                          </div>
-                        </td>
-
-                        {/* Column 4: Source (Clean: only Gmail or Calendar) */}
-                        <td className="py-3.5 px-4 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end whitespace-nowrap">
-                            {item.rawResponsibility?.source === 'both' ? (
-                              <div className="inline-flex items-center gap-1.5 justify-end whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (item.sourceId) onSelectEmail(item.sourceId);
-                                    else handleItemClick(item);
-                                  }}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
-                                  title="Gmail"
-                                >
-                                  <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
-                                  <span>Gmail</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleItemClick(item)}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer shadow-2xs group/src"
-                                  title="Calendar"
-                                >
-                                  <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
-                                  <span>Calendar</span>
-                                </button>
-                              </div>
-                            ) : (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar') ? (
-                              <button
-                                type="button"
-                                onClick={() => handleItemClick(item)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
-                                title="Calendar"
-                              >
-                                <CalendarIcon className="w-3.5 h-3.5 text-indigo-500 group-hover/src:scale-105 transition-transform" />
-                                <span>Calendar</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (item.sourceId) onSelectEmail(item.sourceId);
-                                  else handleItemClick(item);
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-800 text-xs font-semibold transition-colors cursor-pointer group/src shadow-2xs"
-                                title="Gmail"
-                              >
-                                <Mail className="w-3.5 h-3.5 text-rose-500 group-hover/src:scale-105 transition-transform" />
-                                <span>Gmail</span>
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -416,7 +545,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
             <div className="md:hidden divide-y divide-slate-100">
               {sectionItems.map(item => {
                 const formattedDate = item.formattedScheduleText;
-                const conciseAction = item.rawResponsibility?.sourceContext?.nextStep || item.rawResponsibility?.action;
+                const { actionText, isInformational } = getItemActionAndDescription(item, sectionKey);
 
                 const renderMobileDate = () => {
                   if (formattedDate === 'No deadline') {
@@ -459,60 +588,37 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                        <div className="shrink-0 mt-0.5">
-                          {item.itemType === 'event' ? (
-                            <div className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 text-[9px] font-bold shadow-2xs" title="Event / Commitment">
-                              <CalendarIcon className="w-2.5 h-2.5" />
-                            </div>
-                          ) : item.itemType === 'application' ? (
-                            <div className="w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-[10px] font-bold shadow-2xs" title="Opportunity / Window">
-                              W
-                            </div>
-                          ) : (
-                            <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold shadow-2xs">
-                              •
-                            </div>
-                          )}
+                        <div className="shrink-0 pt-0.5">
+                          {renderCategoryItemSourceCell(item)}
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <h3 className="text-xs font-semibold text-slate-900 leading-snug line-clamp-2">
-                            {item.title}
+                            <span>{item.title}</span>
                           </h3>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                          <div className="text-[11px] text-slate-600 flex items-center gap-1.5 flex-wrap">
                             {item.sender && <span className="truncate max-w-[150px]">From: {item.sender.replace(/<.*>/, '').trim()}</span>}
                           </div>
                         </div>
                       </div>
-                      <div className="shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
-                        {item.rawResponsibility?.source === 'both' ? (
-                          <div className="inline-flex items-center gap-1">
-                            <span className="px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200/70 text-rose-800 text-[11px] font-semibold">
-                              Gmail
-                            </span>
-                            <span className="px-2 py-0.5 rounded-lg bg-indigo-50/80 border border-indigo-200/70 text-indigo-800 text-[11px] font-semibold">
-                              Calendar
-                            </span>
-                          </div>
-                        ) : (item.sourceType === 'calendar' || item.rawResponsibility?.source === 'calendar') ? (
-                          <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50/80 border border-indigo-200/70 text-indigo-800 text-[11px] font-semibold">
-                            Calendar
-                          </span>
-                        ) : (
-                          <span className="inline-block px-2 py-0.5 rounded-lg bg-rose-50/80 border border-rose-200/70 text-rose-800 text-[11px] font-semibold">
-                            Gmail
-                          </span>
-                        )}
-                      </div>
+                      
                     </div>
 
-                    {conciseAction ? (
-                      <div className="text-xs text-slate-800 font-medium flex items-start gap-1.5 pl-6.5">
-                        <ArrowRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">{conciseAction}</span>
-                      </div>
-                    ) : item.summary ? (
-                      <p className="text-xs text-slate-600 line-clamp-2 pl-6.5">{item.summary}</p>
-                    ) : null}
+                    {(() => {
+                      const derived = deriveSpecificNextStep(item.title, actionText, isInformational);
+                      if (derived.isInformational) {
+                        return (
+                          <div className="text-xs text-slate-500 font-medium flex items-start gap-1.5 pl-6.5">
+                            <span className="line-clamp-2 italic">{derived.nextStep}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="text-xs text-slate-900 font-medium flex items-start gap-1.5 pl-6.5">
+                          <ArrowRight className="w-3.5 h-3.5 text-[#34515e] shrink-0 mt-0.5" />
+                          <span className="line-clamp-2 font-medium">{derived.nextStep}</span>
+                        </div>
+                      );
+                    })()}
 
                     {/* Deadline in Mobile View */}
                     <div className="text-xs pl-6.5 pt-0.5">
@@ -536,9 +642,9 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                       </div>
                       <button
                         onClick={() => handleItemClick(item)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors"
+                        className="text-xs font-semibold text-[#34515e] hover:text-[#283e48] flex items-center gap-1 cursor-pointer transition-colors"
                       >
-                        <span>{item.rawResponsibility ? 'View Details' : 'View Source'}</span>
+                        <span>View Details</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -580,8 +686,8 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-3 py-1 rounded-xl border font-bold ${meta.badgeBg} ${meta.badgeText} shadow-xs`}>
-              {categorySectionCounts.total} unique {categorySectionCounts.total === 1 ? 'item' : 'items'}
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shadow-xs">
+              {categorySectionCounts.total}
             </span>
           </div>
         </div>
@@ -797,7 +903,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                         {renderCategoryIcon(meta.id, 'w-5 h-5')}
                       </div>
                       <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                        {count} {count === 1 ? 'item' : 'items'}
+                        {count}
                       </span>
                     </div>
 
@@ -1070,7 +1176,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
                   setPreviewEmail(null);
                   onSelectEmail(id);
                 }}
-                className="px-4 py-2 rounded-xl bg-[#1a68f0] hover:bg-[#1557cc] text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                className="px-4 py-2 rounded-xl bg-[#34515e] hover:bg-[#283e48] text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 <span>Open in Gmail Tab</span>
                 <ArrowRight className="w-3.5 h-3.5" />

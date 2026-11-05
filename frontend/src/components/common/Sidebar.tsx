@@ -5,10 +5,7 @@ import {
   Calendar as CalendarIcon,
   Mail,
   Sparkles,
-  ChevronRight,
-  ShieldCheck,
-  Search,
-  Command
+  ChevronRight
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -126,30 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Bottom Shortcuts / Status */}
-      <div className="pt-3.5 border-t border-white/10 space-y-2">
-        <button
-          onClick={() => setActiveTab('assistant')}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs bg-white/10 hover:bg-white/15 text-white/90 border border-white/10 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-2">
-            <Search className="w-3.5 h-3.5 text-slate-300" />
-            <span className="font-medium">Search or Ask AI</span>
-          </div>
-          <span className="flex items-center text-[10px] text-[#34515e] bg-white font-bold px-1.5 py-0.5 rounded-md shadow-xs">
-            <Command className="w-2.5 h-2.5 mr-0.5" /> K
-          </span>
-        </button>
-
-        <div className="flex items-center justify-between px-3 py-1.5 text-xs text-sky-200/80">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
-            <span className="truncate text-[11px]">Encrypted & Scoped</span>
-          </div>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
         </div>
       </div>
     </aside>

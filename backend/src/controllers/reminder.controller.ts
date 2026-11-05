@@ -57,3 +57,21 @@ export const markReminderAsRead = async (
     next(error);
   }
 };
+
+export const markAllRemindersAsRead = async (
+  req: Request,
+  res: Response<ApiResponse>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    await reminderService.markAllAsRead(userId);
+    res.status(200).json({
+      success: true,
+      message: 'All reminders marked as read',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
