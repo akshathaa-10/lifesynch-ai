@@ -1,0 +1,86 @@
+@startuml diagram-03-system-architecture
+skinparam rectangleStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI, Arial, sans-serif"
+skinparam defaultFontSize 11
+skinparam roundCorner 8
+
+skinparam rectangle {
+    BackgroundColor #FFFFFF
+    BorderColor #64748B
+    FontColor #0F172A
+}
+
+rectangle "Presentation Tier (React 18 SPA Client)" as T1 #F0F9FF {
+    rectangle "UI Views & Modals" {
+        [Personal Intelligence Hub]
+        [Responsibilities View]
+        [Calendar Sync View]
+        [Ask Assistant Chat]
+        [Notifications Panel]
+        [Opportunity / Details Modal]
+    }
+    rectangle "Client State & Offline Layer" {
+        [AuthContext (JWT Session)]
+        [dataCache (LocalStorage Fast Load)]
+        [Window-Focus & 10s Ticker]
+    }
+    rectangle "Chrome Extension Companion" {
+        [Manifest V3 Background Service]
+    }
+}
+
+rectangle "API Gateway & Security Tier (Express.js)" as T2 #F8FAFC {
+    rectangle "Middlewares" {
+        [auth.middleware (JWT Guard)]
+        [validate.middleware (Zod)]
+        [error.middleware (RFC 7807)]
+        [cors & body-parser]
+    }
+    rectangle "REST Route Controllers (/api/v1)" {
+        [/auth (Google OAuth)]
+        [/tasks (Responsibilities)]
+        [/sync (Gmail/Cal Sync)]
+        [/reminders (Alerts)]
+        [/assistant (Conversational Chat)]
+    }
+}
+
+rectangle "Core Intelligence & Business Logic Tier" as T3 #FEF3C7 {
+    rectangle "Domain Services" {
+        [TaskService (Lifecycle & Status)]
+        [AutoSyncService (10s Polling)]
+        [ReminderService (Threshold Engine)]
+    }
+    rectangle "AI Extraction & NLP Pipeline" {
+        [ExtractionService (Schema Prompting)]
+        [ResponsibilityGenerationService (Multi-pass)]
+        [ResponsibilityMatcher (Urgency/Timing)]
+        [AssistantService (RAG + Fallback)]
+    }
+    rectangle "Google Integration Layer" {
+        [OAuthService (Token Refresh)]
+        [GmailService (Batch Threads)]
+        [CalendarService (Events Sync)]
+    }
+}
+
+rectangle "Data Storage & External Services Tier" as T4 #ECFDF5 {
+    database "Supabase PostgreSQL (RLS)" {
+        [users & connected_accounts]
+        [emails & calendar_events]
+        [responsibilities & notifications]
+        [sync_state]
+    }
+    cloud "External Services" {
+        [Google Cloud: Gmail & Calendar APIs]
+        [Google Cloud: OAuth 2.0 Provider]
+        [Google Gemini AI: gemini-1.5-flash]
+    }
+}
+
+T1 --> T2 : HTTPS / REST (/api/v1)
+T2 --> T3 : Internal Service Invocations
+T3 --> T4 : Supabase Service Client & Google/Gemini SDKs
+
+@enduml

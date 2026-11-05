@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" width="1200" height="850">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .subtitle { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #64748b; text-anchor: middle; }
+      .boundary { fill: #fcfdfd; stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 6,4; rx: 16; }
+      .boundary-lbl { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #334155; }
+      .actor-card { fill: #f0f9ff; stroke: #0284c7; stroke-width: 2; rx: 12; }
+      .actor-ext { fill: #f8fafc; stroke: #475569; stroke-width: 2; rx: 12; }
+      .actor-title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .actor-sub { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; fill: #475569; text-anchor: middle; }
+      .uc-box { fill: #ffffff; stroke: #0284c7; stroke-width: 1.5; rx: 22; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.04)); }
+      .uc-text { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12.5px; font-weight: 600; fill: #0f172a; text-anchor: middle; }
+      .uc-id { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; font-weight: bold; fill: #0369a1; text-anchor: middle; }
+      .line { stroke: #64748b; stroke-width: 1.6; fill: none; }
+      .line-accent { stroke: #0284c7; stroke-width: 1.8; fill: none; }
+      .arrow { fill: #64748b; }
+      .arrow-accent { fill: #0284c7; }
+    </style>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M 0 0 L 8 4 L 0 8 Z" class="arrow" />
+    </marker>
+    <marker id="arr-acc" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M 0 0 L 8 4 L 0 8 Z" class="arrow-accent" />
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" class="bg" />
+
+  <!-- Diagram Header -->
+  <text x="600" y="42" class="title">LifeSynch AI — Overall Use Case Diagram</text>
+  <text x="600" y="65" class="subtitle">System Boundary, Primary Human Actors, High-Level Use Cases, and External Integration Boundaries</text>
+
+  <!-- Left: Primary Actor (User) -->
+  <g transform="translate(60, 360)">
+    <rect x="-55" y="-55" width="110" height="135" class="actor-card" />
+    <!-- Human Stick Figure Icon -->
+    <circle cx="0" cy="-20" r="14" fill="#0284c7" />
+    <path d="M 0 -6 L 0 28 M -22 6 L 22 6 M 0 28 L -14 55 M 0 28 L 14 55" stroke="#0284c7" stroke-width="3" stroke-linecap="round" fill="none" />
+    <text x="0" y="66" class="actor-title">User</text>
+    <text x="0" y="79" class="actor-sub">(Student / Individual)</text>
+  </g>
+
+  <!-- System Boundary -->
+  <rect x="230" y="100" width="670" height="710" class="boundary" />
+  <text x="250" y="128" class="boundary-lbl">SYSTEM BOUNDARY: LifeSynch AI Platform</text>
+
+  <!-- Use Cases inside boundary (2 columns) -->
+  <!-- Column 1 -->
+  <!-- UC1 -->
+  <g transform="translate(390, 180)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-01</text>
+    <text x="0" y="14" class="uc-text">Authenticate via Google OAuth 2.0</text>
+  </g>
+
+  <!-- UC2 -->
+  <g transform="translate(390, 250)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-02</text>
+    <text x="0" y="14" class="uc-text">Ingest &amp; Synchronize Digital Sources</text>
+  </g>
+
+  <!-- UC3 -->
+  <g transform="translate(390, 320)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-03</text>
+    <text x="0" y="14" class="uc-text">Extract &amp; Classify Responsibilities</text>
+  </g>
+
+  <!-- UC4 -->
+  <g transform="translate(390, 390)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-04</text>
+    <text x="0" y="14" class="uc-text">Surface "Worth Knowing" Insights</text>
+  </g>
+
+  <!-- UC5 -->
+  <g transform="translate(390, 460)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-05</text>
+    <text x="0" y="14" class="uc-text">View Personal Intelligence Hub</text>
+  </g>
+
+  <!-- UC6 -->
+  <g transform="translate(390, 530)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-06</text>
+    <text x="0" y="14" class="uc-text">Track &amp; Manage Responsibilities</text>
+  </g>
+
+  <!-- Column 2 -->
+  <!-- UC7 -->
+  <g transform="translate(730, 250)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-07</text>
+    <text x="0" y="14" class="uc-text">Synchronize &amp; View Calendar Schedule</text>
+  </g>
+
+  <!-- UC8 -->
+  <g transform="translate(730, 390)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-08</text>
+    <text x="0" y="14" class="uc-text">Query Conversational Assistant</text>
+  </g>
+
+  <!-- UC9 -->
+  <g transform="translate(730, 530)">
+    <rect x="-140" y="-24" width="280" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-09</text>
+    <text x="0" y="14" class="uc-text">Receive Proactive Deadline Reminders</text>
+  </g>
+
+  <!-- UC10 -->
+  <g transform="translate(560, 660)">
+    <rect x="-150" y="-24" width="300" height="48" class="uc-box" />
+    <text x="0" y="-4" class="uc-id">UC-10</text>
+    <text x="0" y="14" class="uc-text">Perform Unified Cross-Source Search</text>
+  </g>
+
+  <!-- Right: External Actors -->
+  <!-- Gmail API -->
+  <g transform="translate(1080, 200)">
+    <rect x="-70" y="-40" width="140" height="80" class="actor-ext" />
+    <rect x="-18" y="-30" width="36" height="26" rx="4" fill="#ea4335" />
+    <path d="M -16 -28 L 0 -16 L 16 -28" stroke="#ffffff" stroke-width="2" fill="none" />
+    <text x="0" y="16" class="actor-title">Gmail API</text>
+    <text x="0" y="30" class="actor-sub">&lt;&lt;Service Actor&gt;&gt;</text>
+  </g>
+
+  <!-- Google Calendar API -->
+  <g transform="translate(1080, 360)">
+    <rect x="-70" y="-40" width="140" height="80" class="actor-ext" />
+    <rect x="-18" y="-30" width="36" height="26" rx="4" fill="#4285f4" />
+    <text x="0" y="-12" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle">31</text>
+    <text x="0" y="16" class="actor-title">Google Calendar</text>
+    <text x="0" y="30" class="actor-sub">&lt;&lt;Service Actor&gt;&gt;</text>
+  </g>
+
+  <!-- Gemini LLM Engine -->
+  <g transform="translate(1080, 520)">
+    <rect x="-70" y="-40" width="140" height="80" class="actor-ext" />
+    <circle cx="0" cy="-18" r="14" fill="#9333ea" />
+    <path d="M -7 -18 L 7 -18 M 0 -25 L 0 -11" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" />
+    <text x="0" y="16" class="actor-title">Gemini LLM</text>
+    <text x="0" y="30" class="actor-sub">&lt;&lt;AI Engine Actor&gt;&gt;</text>
+  </g>
+
+  <!-- Association Lines from User -->
+  <!-- User to UC1 -->
+  <path d="M 115 360 C 180 340, 200 200, 250 180" class="line-accent" />
+  <!-- User to UC5 -->
+  <path d="M 115 380 C 180 400, 200 450, 250 460" class="line-accent" />
+  <!-- User to UC6 -->
+  <path d="M 115 400 C 170 430, 200 510, 250 530" class="line-accent" />
+  <!-- User to UC7 -->
+  <path d="M 115 370 C 220 320, 480 270, 590 250" class="line-accent" />
+  <!-- User to UC8 -->
+  <path d="M 115 390 C 220 400, 480 395, 590 390" class="line-accent" />
+  <!-- User to UC9 -->
+  <path d="M 115 410 C 200 470, 480 520, 590 530" class="line-accent" />
+  <!-- User to UC10 -->
+  <path d="M 115 420 C 180 520, 300 640, 410 660" class="line-accent" />
+
+  <!-- Association Lines from Use Cases to External Actors -->
+  <!-- UC1 to Gmail -->
+  <path d="M 530 180 C 700 160, 900 180, 1010 195" class="line" marker-end="url(#arr)" />
+  <!-- UC1 to Calendar -->
+  <path d="M 530 190 C 700 220, 920 320, 1010 345" class="line" marker-end="url(#arr)" />
+  <!-- UC2 to Gmail -->
+  <path d="M 530 250 C 720 230, 920 220, 1010 210" class="line" marker-end="url(#arr)" />
+  <!-- UC2 to Calendar -->
+  <path d="M 530 260 C 720 290, 920 340, 1010 355" class="line" marker-end="url(#arr)" />
+  <!-- UC3 to LLM -->
+  <path d="M 530 320 C 720 360, 900 480, 1010 510" class="line" marker-end="url(#arr)" />
+  <!-- UC4 to LLM -->
+  <path d="M 530 390 C 720 420, 900 495, 1010 520" class="line" marker-end="url(#arr)" />
+  <!-- UC8 to LLM -->
+  <path d="M 870 390 C 940 410, 970 470, 1010 520" class="line" marker-end="url(#arr)" />
+
+</svg>

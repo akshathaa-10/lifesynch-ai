@@ -1,0 +1,71 @@
+flowchart TD
+    subgraph Actors ["Actors"]
+        U["fa:fa-user User"]
+        GM["fa:fa-envelope Gmail API"]
+        GC["fa:fa-calendar Google Calendar"]
+        AI["fa:fa-brain Gemini LLM"]
+    end
+
+    subgraph SystemBoundary ["LifeSynch AI System Boundary"]
+        subgraph Sub1 ["Data Ingestion & Auth"]
+            I["Ingest Digital Sources"]
+            V["Verify OAuth Session"]
+            SG["Sync Gmail Messages"]
+            SC["Sync Calendar Events"]
+        end
+
+        subgraph Sub2 ["AI Extraction & Intelligence"]
+            E["Extract Responsibilities"]
+            NF["Filter Non-Actionable Content"]
+            ZV["Validate Schema via Zod"]
+            DD["Deduplicate Records"]
+            WK["Surface Worth Knowing Items"]
+            OM["View Opportunity Modal"]
+        end
+
+        subgraph Sub3 ["Intelligence Hub & Lifecycle Tracking"]
+            VH["View Intelligence Hub"]
+            CU["Calculate Dynamic Urgency"]
+            CF["Filter by Category"]
+            MR["Manage Responsibilities"]
+            RD["View Responsibility Modal"]
+            US["Update Status & Priority"]
+        end
+
+        subgraph Sub4 ["Conversational Assistant & Alerts"]
+            AS["Ask LifeSynch Assistant"]
+            CR["Retrieve Contextual Records"]
+            PR["Receive Proactive Reminders"]
+            ET["Evaluate Deadline Thresholds"]
+            FN["Filter Notification Feed"]
+        end
+    end
+
+    U --> I
+    U --> VH
+    U --> MR
+    U --> AS
+    U --> PR
+
+    I -. "<<include>>" .-> V
+    SG --> I
+    SC --> I
+    SG --> GM
+    SC --> GC
+
+    E -. "<<include>>" .-> NF
+    E -. "<<include>>" .-> ZV
+    E -. "<<include>>" .-> DD
+    E --> AI
+    OM -. "<<extend>>" .-> WK
+
+    VH -. "<<include>>" .-> CU
+    CF -. "<<extend>>" .-> VH
+    RD -. "<<extend>>" .-> MR
+    US -. "<<extend>>" .-> MR
+
+    AS -. "<<include>>" .-> CR
+    AS --> AI
+
+    PR -. "<<include>>" .-> ET
+    FN -. "<<extend>>" .-> PR

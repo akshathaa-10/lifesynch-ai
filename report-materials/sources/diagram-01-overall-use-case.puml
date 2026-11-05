@@ -1,0 +1,60 @@
+@startuml diagram-01-overall-use-case
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI, Arial, sans-serif"
+skinparam defaultFontSize 12
+skinparam roundCorner 10
+
+skinparam actor {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+skinparam usecase {
+    BackgroundColor #F8FAFC
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+skinparam rectangle {
+    BackgroundColor #FFFFFF
+    BorderColor #94A3B8
+    FontColor #0F172A
+}
+
+actor "User\n(Student / Individual)" as User
+actor "Gmail API" as Gmail <<External System>>
+actor "Google Calendar API" as Calendar <<External System>>
+actor "Gemini LLM Engine" as LLM <<External System>>
+
+rectangle "LifeSynch AI System Boundary" {
+    usecase "UC1: Authenticate via Google OAuth 2.0" as UC1
+    usecase "UC2: Ingest & Synchronize Digital Sources" as UC2
+    usecase "UC3: Extract & Classify Responsibilities" as UC3
+    usecase "UC4: Surface 'Worth Knowing' Opportunities" as UC4
+    usecase "UC5: View Personal Intelligence Hub" as UC5
+    usecase "UC6: Track & Manage Responsibilities" as UC6
+    usecase "UC7: Synchronize & View Calendar Schedule" as UC7
+    usecase "UC8: Query Conversational Assistant" as UC8
+    usecase "UC9: Receive Proactive Reminders & Alerts" as UC9
+    usecase "UC10: Perform Unified Cross-Source Search" as UC10
+}
+
+User --> UC1
+User --> UC5
+User --> UC6
+User --> UC7
+User --> UC8
+User --> UC9
+User --> UC10
+
+UC1 --> Gmail
+UC1 --> Calendar
+UC2 --> Gmail
+UC2 --> Calendar
+UC3 --> LLM
+UC4 --> LLM
+UC8 --> LLM
+
+@enduml

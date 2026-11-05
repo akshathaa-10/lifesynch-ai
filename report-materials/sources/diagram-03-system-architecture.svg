@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1350 960" width="1350" height="960">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .subtitle { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #64748b; text-anchor: middle; }
+      .tier-rect { rx: 12; stroke-width: 1.8; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.03)); }
+      .t1-bg { fill: #f8fafc; stroke: #0284c7; }
+      .t2-bg { fill: #faf5ff; stroke: #9333ea; }
+      .t3-bg { fill: #fffbeb; stroke: #d97706; }
+      .t4-bg { fill: #f0fdf4; stroke: #059669; }
+      .tier-title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; font-weight: bold; }
+      .tier-sub { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; fill: #64748b; }
+      .comp-box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; rx: 8; }
+      .comp-title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .comp-sub { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.5px; fill: #64748b; text-anchor: middle; }
+      .conn-line { stroke: #64748b; stroke-width: 2.2; fill: none; }
+      .conn-arrow { fill: #64748b; }
+    </style>
+    <marker id="downarr" markerWidth="8" markerHeight="8" refX="4" refY="7" orient="auto">
+      <polygon points="0 0, 8 0, 4 7" class="conn-arrow" />
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" class="bg" />
+
+  <text x="675" y="36" class="title">LifeSynch AI — 4-Tier System Architecture Diagram</text>
+  <text x="675" y="56" class="subtitle">Component Decomposition across Client, API Gateway, Intelligence Logic, and Cloud Persistence</text>
+
+  <!-- ================= TIER 1 ================= -->
+  <g transform="translate(60, 75)">
+    <rect width="1230" height="175" class="tier-rect t1-bg" />
+    <text x="25" y="28" class="tier-title" fill="#0369a1">TIER 1: PRESENTATION &amp; CLIENT APPLICATION</text>
+    <text x="25" y="44" class="tier-sub">React 18 SPA, Vite, Tailwind CSS, Local Data Caching &amp; Chrome Extension Companion</text>
+
+    <!-- Components row -->
+    <g transform="translate(25, 60)">
+      <!-- Hub -->
+      <rect x="0" y="0" width="180" height="95" class="comp-box" />
+      <text x="90" y="28" class="comp-title">Personal Intelligence Hub</text>
+      <text x="90" y="46" class="comp-sub">Unified Categorized Feed</text>
+      <text x="90" y="62" class="comp-sub">Academic, Career, Finance</text>
+      <text x="90" y="78" class="comp-sub">Quick Metric Badges</text>
+
+      <!-- Responsibilities -->
+      <rect x="195" y="0" width="180" height="95" class="comp-box" />
+      <text x="285" y="28" class="comp-title">Responsibilities View</text>
+      <text x="285" y="46" class="comp-sub">Needs Attention Section</text>
+      <text x="285" y="62" class="comp-sub">Upcoming Commitments</text>
+      <text x="285" y="78" class="comp-sub">Action &amp; Next Step Derive</text>
+
+      <!-- Calendar -->
+      <rect x="390" y="0" width="180" height="95" class="comp-box" />
+      <text x="480" y="28" class="comp-title">Calendar &amp; Events</text>
+      <text x="480" y="46" class="comp-sub">Google Calendar Sync</text>
+      <text x="480" y="62" class="comp-sub">Timeline &amp; Agenda Views</text>
+      <text x="480" y="78" class="comp-sub">Event Detail Modal</text>
+
+      <!-- Assistant -->
+      <rect x="585" y="0" width="180" height="95" class="comp-box" />
+      <text x="675" y="28" class="comp-title">Ask LifeSynch Chat</text>
+      <text x="675" y="46" class="comp-sub">Conversational AI UI</text>
+      <text x="675" y="62" class="comp-sub">Contextual Querying</text>
+      <text x="675" y="78" class="comp-sub">Attributed Citations</text>
+
+      <!-- Notifications -->
+      <rect x="780" y="0" width="180" height="95" class="comp-box" />
+      <text x="870" y="28" class="comp-title">Notification Center</text>
+      <text x="870" y="46" class="comp-sub">Deadline Alert Popover</text>
+      <text x="870" y="62" class="comp-sub">Category Filters</text>
+      <text x="870" y="78" class="comp-sub">Mark-As-Read State</text>
+
+      <!-- Caching & Extension -->
+      <rect x="975" y="0" width="205" height="95" class="comp-box" />
+      <text x="1077" y="28" class="comp-title">Client State &amp; Companion</text>
+      <text x="1077" y="46" class="comp-sub">AuthContext (JWT Session)</text>
+      <text x="1077" y="62" class="comp-sub">dataCache (LocalStorage)</text>
+      <text x="1077" y="78" class="comp-sub">Chrome Extension Manifest V3</text>
+    </g>
+  </g>
+
+  <!-- Arrow T1 -> T2 -->
+  <path d="M 675 250 L 675 285" class="conn-line" marker-end="url(#downarr)" />
+  <text x="735" y="272" font-family="'Segoe UI', Arial" font-size="10.5" font-weight="bold" fill="#0284c7">HTTPS / REST JSON</text>
+
+  <!-- ================= TIER 2 ================= -->
+  <g transform="translate(60, 290)">
+    <rect width="1230" height="150" class="tier-rect t2-bg" />
+    <text x="25" y="26" class="tier-title" fill="#7e22ce">TIER 2: API GATEWAY &amp; REST INTERFACE</text>
+    <text x="25" y="42" class="tier-sub">Node.js + Express.js HTTP Server, Security Guards, Validation Pipelines &amp; Route Dispatchers</text>
+
+    <!-- Components row -->
+    <g transform="translate(25, 55)">
+      <rect x="0" y="0" width="275" height="80" class="comp-box" />
+      <text x="137" y="26" class="comp-title">Security &amp; Auth Guards</text>
+      <text x="137" y="44" class="comp-sub">auth.middleware (JWT Verification)</text>
+      <text x="137" y="60" class="comp-sub">CORS Origin &amp; Secure Headers</text>
+
+      <rect x="290" y="0" width="275" height="80" class="comp-box" />
+      <text x="427" y="26" class="comp-title">Validation &amp; Error Handling</text>
+      <text x="427" y="44" class="comp-sub">validate.middleware (Zod Schemas)</text>
+      <text x="427" y="60" class="comp-sub">error.middleware (RFC 7807 Format)</text>
+
+      <rect x="580" y="0" width="600" height="80" class="comp-box" />
+      <text x="880" y="24" class="comp-title">RESTful API Endpoints (/api/v1)</text>
+      <text x="880" y="42" class="comp-sub">/auth (Google OAuth)  |  /tasks (CRUD &amp; Lifecycle)  |  /sync (Gmail &amp; Calendar)</text>
+      <text x="880" y="60" class="comp-sub">/reminders (Active Notifications)  |  /assistant (Conversational Chat)  |  /health</text>
+    </g>
+  </g>
+
+  <!-- Arrow T2 -> T3 -->
+  <path d="M 675 440 L 675 475" class="conn-line" marker-end="url(#downarr)" />
+  <text x="745" y="462" font-family="'Segoe UI', Arial" font-size="10.5" font-weight="bold" fill="#7e22ce">Service Layer Invocation</text>
+
+  <!-- ================= TIER 3 ================= -->
+  <g transform="translate(60, 480)">
+    <rect width="1230" height="215" class="tier-rect t3-bg" />
+    <text x="25" y="26" class="tier-title" fill="#b45309">TIER 3: CORE INTELLIGENCE &amp; BUSINESS LOGIC TIER</text>
+    <text x="25" y="42" class="tier-sub">AI Extraction Engine, Multi-Pass Filtering, Semantic Deduplication, Urgency Calculator &amp; Google Services</text>
+
+    <!-- Components row -->
+    <g transform="translate(25, 55)">
+      <!-- AI Engine Cluster -->
+      <rect x="0" y="0" width="460" height="145" class="comp-box" />
+      <text x="230" y="24" class="comp-title" fill="#b45309">AI Intelligence &amp; NLP Extraction Pipeline</text>
+      <text x="230" y="44" class="comp-sub">ExtractionService: Structured Output with Zod Schema Validation</text>
+      <text x="230" y="62" class="comp-sub">ResponsibilityGenerationService: Multi-Pass Semantic Classification</text>
+      <text x="230" y="80" class="comp-sub">Noise Suppression: Filters non-actionable updates, OTPs, promotional spam</text>
+      <text x="230" y="98" class="comp-sub">ResponsibilityMatcher: Token Matching, Smart Timing &amp; Deduplication</text>
+      <text x="230" y="116" class="comp-sub">AssistantService: Contextual Retrieval RAG + Deterministic Fallback</text>
+
+      <!-- Business Domain Services -->
+      <rect x="475" y="0" width="370" height="145" class="comp-box" />
+      <text x="660" y="24" class="comp-title" fill="#b45309">Domain Lifecycle &amp; Scheduling Services</text>
+      <text x="660" y="46" class="comp-sub">TaskService: Task Lifecycle, Priority Ordering, CRUD</text>
+      <text x="660" y="66" class="comp-sub">AutoSyncService: 10s Polling Coordinator &amp; Window Focus</text>
+      <text x="660" y="86" class="comp-sub">ReminderService: 24h &amp; 48h Deadline Proactive Engine</text>
+      <text x="660" y="106" class="comp-sub">Reconciliation Engine: Status transitions (Overdue, Due Today)</text>
+      <text x="660" y="126" class="comp-sub">Notification Dispatcher: Read state &amp; Category routing</text>
+
+      <!-- Google Integration Boundary -->
+      <rect x="860" y="0" width="320" height="145" class="comp-box" />
+      <text x="1020" y="24" class="comp-title" fill="#b45309">Google Services Integration Boundary</text>
+      <text x="1020" y="50" class="comp-sub">OAuthService: Consent URL &amp; Refresh Token Exchange</text>
+      <text x="1020" y="74" class="comp-sub">GmailService: Batch Message Fetching &amp; Body Parsing</text>
+      <text x="1020" y="98" class="comp-sub">CalendarService: Incremental Event Sync &amp; Recurrence</text>
+      <text x="1020" y="122" class="comp-sub">Rate Limiter &amp; Exponential Backoff Retries</text>
+    </g>
+  </g>
+
+  <!-- Arrow T3 -> T4 -->
+  <path d="M 675 695 L 675 730" class="conn-line" marker-end="url(#downarr)" />
+  <text x="740" y="717" font-family="'Segoe UI', Arial" font-size="10.5" font-weight="bold" fill="#059669">Database Client &amp; Cloud SDKs</text>
+
+  <!-- ================= TIER 4 ================= -->
+  <g transform="translate(60, 735)">
+    <rect width="1230" height="175" class="tier-rect t4-bg" />
+    <text x="25" y="26" class="tier-title" fill="#047857">TIER 4: DATA STORAGE &amp; EXTERNAL CLOUD SERVICES</text>
+    <text x="25" y="42" class="tier-sub">PostgreSQL via Supabase (Relational Database with RLS) &amp; Cloud API Providers</text>
+
+    <!-- Components row -->
+    <g transform="translate(25, 55)">
+      <!-- Supabase Tables -->
+      <rect x="0" y="0" width="580" height="100" class="comp-box" />
+      <text x="290" y="24" class="comp-title" fill="#047857">Supabase PostgreSQL Relational Schema (Row Level Security)</text>
+      <text x="290" y="44" class="comp-sub">users (Profiles, Google IDs)  |  connected_accounts (OAuth Tokens, Expiry)</text>
+      <text x="290" y="62" class="comp-sub">emails (Headers, Snippets, Labels)  |  calendar_events (Start/End, Location)</text>
+      <text x="290" y="80" class="comp-sub">responsibilities (Action, NextStep, DueDate, Status)  |  notifications  |  sync_state</text>
+
+      <!-- External Google Services -->
+      <rect x="595" y="0" width="300" height="100" class="comp-box" />
+      <text x="745" y="26" class="comp-title" fill="#1e3a8a">Google Cloud Platform APIs</text>
+      <text x="745" y="48" class="comp-sub">Gmail API v1 (Message Threads &amp; Metadata)</text>
+      <text x="745" y="68" class="comp-sub">Google Calendar API v3 (Schedules &amp; Events)</text>
+      <text x="745" y="88" class="comp-sub">Google Identity (OAuth 2.0 Token Authority)</text>
+
+      <!-- Gemini AI API -->
+      <rect x="910" y="0" width="270" height="100" class="comp-box" />
+      <text x="1045" y="26" class="comp-title" fill="#6b21a8">Google Gemini Generative AI</text>
+      <text x="1045" y="48" class="comp-sub">Model: gemini-1.5-flash</text>
+      <text x="1045" y="68" class="comp-sub">Structured JSON Extraction Pipeline</text>
+      <text x="1045" y="88" class="comp-sub">Contextual Conversational Assistant</text>
+    </g>
+  </g>
+
+</svg>

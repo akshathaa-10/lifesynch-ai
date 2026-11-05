@@ -1,0 +1,38 @@
+@startuml diagram-04-dfd-level-0
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI, Arial, sans-serif"
+skinparam defaultFontSize 11
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #334155
+    FontColor #0F172A
+}
+
+skinparam circle {
+    BackgroundColor #EFF6FF
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+rectangle "User / Student" as User
+rectangle "Google OAuth 2.0" as OAuth
+rectangle "Gmail API Service" as Gmail
+rectangle "Google Calendar API" as Calendar
+rectangle "Gemini LLM Service" as LLM
+
+rectangle "0.0\nLifeSynch AI\nPersonal Digital Life\nManagement System" as P0 #E0F2FE
+
+User --> P0 : Google Auth Trigger / User Queries / Task Status Updates
+P0 --> User : Intelligence Dashboard / Prioritized Deadlines / Reminders / Answers
+
+P0 --> OAuth : Authorization Request & Token Exchange
+OAuth --> P0 : OAuth Tokens & Profile Identity
+
+Gmail --> P0 : Raw Messages, Threads & Metadata
+Calendar --> P0 : Calendar Events & Meeting Schedules
+
+P0 --> LLM : Contextual Raw Text & Zod JSON Schemas
+LLM --> P0 : Structured Responsibilities & Assistant Responses
+
+@enduml

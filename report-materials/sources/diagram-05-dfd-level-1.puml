@@ -1,0 +1,72 @@
+@startuml diagram-05-dfd-level-1
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI, Arial, sans-serif"
+skinparam defaultFontSize 11
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #334155
+    FontColor #0F172A
+}
+
+skinparam circle {
+    BackgroundColor #EFF6FF
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor #D97706
+    FontColor #0F172A
+}
+
+rectangle "User / Student" as User
+rectangle "Google OAuth 2.0" as OAuth
+rectangle "Gmail API" as Gmail
+rectangle "Google Calendar API" as Calendar
+rectangle "Gemini LLM" as LLM
+
+database "D1: Users & Accounts" as D1
+database "D2: Ingested Digital Sources" as D2
+database "D3: Structured Responsibilities" as D3
+database "D4: Notifications & Reminders" as D4
+database "D5: Sync State & Logs" as D5
+
+circle "1.0\nAuth & Source\nAuthorization" as P1
+circle "2.0\nDigital Data\nIngestion & Sync" as P2
+circle "3.0\nAI Extraction &\nClassification" as P3
+circle "4.0\nDeadline Tracking\n& Notifications" as P4
+circle "5.0\nConversational AI\n& Unified Search" as P5
+
+User --> P1 : Sign-in Request
+P1 --> OAuth : Code Exchange
+OAuth --> P1 : Tokens & Profile
+P1 --> D1 : Store User & Tokens
+P1 --> User : JWT Session Token
+
+D1 --> P2 : Read OAuth Credentials
+Gmail --> P2 : Fetch Emails & Threads
+Calendar --> P2 : Fetch Calendar Events
+P2 --> D2 : Store Raw Emails & Events
+P2 --> D5 : Record Sync Timestamp & Status
+
+D2 --> P3 : Unprocessed Emails & Events
+P3 --> LLM : Extraction Prompts & Schemas
+LLM --> P3 : Structured Action Items
+P3 --> D3 : Store Validated Responsibilities & Discoveries
+
+D3 --> P4 : Active Responsibilities
+D2 --> P4 : Synced Calendar Dates
+P4 --> D4 : Store Proactive Reminders
+P4 --> User : Personalized Dashboard Feed & Deadline Alerts
+
+User --> P5 : Ask Assistant Query / Search Keyword
+D2 --> P5 : Source Context Records
+D3 --> P5 : Current Responsibilities
+D4 --> P5 : Active Notifications
+P5 --> LLM : Grounded RAG Prompt
+LLM --> P5 : Generated Synthesis
+P5 --> User : Grounded Answer & Search Matches
+
+@enduml

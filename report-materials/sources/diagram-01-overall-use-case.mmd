@@ -1,0 +1,43 @@
+flowchart LR
+    subgraph Users ["User Actor"]
+        U["fa:fa-user User<br/>(Student / Individual)"]
+    end
+
+    subgraph System ["LifeSynch AI System Boundary"]
+        UC1(["UC1: Authenticate via Google OAuth 2.0"])
+        UC2(["UC2: Ingest & Synchronize Digital Sources"])
+        UC3(["UC3: Extract & Classify Responsibilities"])
+        UC4(["UC4: Surface 'Worth Knowing' Opportunities"])
+        UC5(["UC5: View Personal Intelligence Hub"])
+        UC6(["UC6: Track & Manage Responsibilities"])
+        UC7(["UC7: Synchronize & View Calendar Schedule"])
+        UC8(["UC8: Query Conversational Assistant"])
+        UC9(["UC9: Receive Proactive Reminders & Alerts"])
+        UC10(["UC10: Perform Unified Cross-Source Search"])
+    end
+
+    subgraph External ["External Services"]
+        GM["fa:fa-envelope Gmail API"]
+        GC["fa:fa-calendar Google Calendar API"]
+        AI["fa:fa-brain Gemini LLM Engine"]
+    end
+
+    U --> UC1
+    U --> UC5
+    U --> UC6
+    U --> UC7
+    U --> UC8
+    U --> UC9
+    U --> UC10
+
+    UC1 --> GM
+    UC1 --> GC
+    UC2 --> GM
+    UC2 --> GC
+    UC3 --> AI
+    UC4 --> AI
+    UC8 --> AI
+
+    style Users fill:#e0f2fe,stroke:#0284c7,stroke-width:2px
+    style System fill:#ffffff,stroke:#64748b,stroke-width:2px
+    style External fill:#f1f5f9,stroke:#475569,stroke-width:2px

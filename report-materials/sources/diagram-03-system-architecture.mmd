@@ -1,0 +1,52 @@
+flowchart TD
+    subgraph T1 ["Tier 1: Client / Presentation Tier (React 18 + Vite)"]
+        direction TB
+        V1["Personal Intelligence Hub"]
+        V2["Responsibilities & Lifecycle View"]
+        V3["Calendar Sync & Timeline View"]
+        V4["Ask LifeSynch Chatbot"]
+        V5["Notifications & Alert Center"]
+        V6["Modals (Responsibility, Worth Knowing)"]
+        AC["AuthContext (JWT State)"]
+        DC["dataCache (LocalStorage)"]
+        EXT["Chrome Extension Manifest V3"]
+    end
+
+    subgraph T2 ["Tier 2: API Gateway & Security Tier (Express.js REST API)"]
+        direction TB
+        MW1["auth.middleware (JWT Guard)"]
+        MW2["validate.middleware (Zod)"]
+        MW3["error.middleware (Centralized)"]
+        RC1["/api/v1/auth"]
+        RC2["/api/v1/tasks"]
+        RC3["/api/v1/sync"]
+        RC4["/api/v1/reminders"]
+        RC5["/api/v1/assistant"]
+    end
+
+    subgraph T3 ["Tier 3: Core Intelligence & Business Logic Tier"]
+        direction TB
+        S1["TaskService (Lifecycle & CRUD)"]
+        S2["AutoSyncService (10s Polling & Focus)"]
+        S3["ReminderService (24h/48h Engine)"]
+        AI1["ExtractionService (Zod Structured Schemas)"]
+        AI2["ResponsibilityGenerationService (Multi-pass Filter)"]
+        AI3["ResponsibilityMatcher (Urgency & Timing)"]
+        AI4["AssistantService (RAG Retrieval + Deterministic Fallback)"]
+        G1["OAuthService (Token Refresh)"]
+        G2["GmailService (Messages & Spam)"]
+        G3["CalendarService (Events Fetcher)"]
+    end
+
+    subgraph T4 ["Tier 4: Data Storage & External Cloud Services"]
+        direction TB
+        DB[("Supabase PostgreSQL (RLS)<br/>users, connected_accounts, emails,<br/>responsibilities, calendar_events, notifications, sync_state")]
+        EXT_G["Google Cloud APIs (Gmail, Calendar, OAuth 2.0)"]
+        EXT_AI["Google Gemini AI (gemini-1.5-flash)"]
+    end
+
+    T1 ==>|HTTPS / REST| T2
+    T2 ==>|Service Calls| T3
+    T3 ==>|Supabase Admin SDK| DB
+    T3 ==>|OAuth & REST| EXT_G
+    T3 ==>|Generative AI API| EXT_AI

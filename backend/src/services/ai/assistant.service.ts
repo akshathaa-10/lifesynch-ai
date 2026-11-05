@@ -29,11 +29,17 @@ export type AssistantIntent =
   | 'overdue'
   | 'passed'
   | 'upcoming_deadlines'
+  | 'upcoming_events'
   | 'calendar_schedule'
   | 'meeting_lookup'
   | 'opportunities'
   | 'academic_updates'
   | 'today_overview'
+  | 'focus_tomorrow'
+  | 'week_schedule'
+  | 'pending_applications'
+  | 'placement_updates'
+  | 'internship_updates'
   | 'email_summary'
   | 'email_explanation'
   | 'email_action_check'
@@ -46,7 +52,7 @@ export type AssistantIntent =
 export interface ClassificationResult {
   intent: AssistantIntent;
   targetEntity?: string;
-  subType?: 'tomorrow_only' | 'highest_single' | 'actionable_only' | 'why_priority' | 'today_only';
+  subType?: 'tomorrow_only' | 'highest_single' | 'actionable_only' | 'why_priority' | 'today_only' | 'this_week' | 'next_week' | 'events_only' | 'tasks_only' | 'all';
   targetEmail?: EmailRecord;
   targetDiscovery?: IntelligentDiscovery;
   matchedRecords?: {
@@ -69,6 +75,13 @@ export interface FilteredAssistantData {
   tomorrowTasks?: Responsibility[];
   tomorrowEvents?: CalendarEventRecord[];
   tomorrowItems?: Array<ClassifiedLifeItem & { formattedScheduleText: string }>;
+  weekTasks?: Responsibility[];
+  weekEvents?: CalendarEventRecord[];
+  pendingApplications?: Responsibility[];
+  placementEmails?: EmailRecord[];
+  placementTasks?: Responsibility[];
+  internshipEmails?: EmailRecord[];
+  internshipTasks?: Responsibility[];
   academicItems?: Array<ClassifiedLifeItem & { formattedScheduleText: string }>;
   careerItems?: Array<ClassifiedLifeItem & { formattedScheduleText: string }>;
   opportunityTasks?: Responsibility[];
@@ -89,6 +102,11 @@ export interface TemporalContext {
   todayStr: string;
   tomorrowStr: string;
   currentTimeStr: string;
+  currentIso: string;
+  thisWeekStartStr: string;
+  thisWeekEndStr: string;
+  nextWeekStartStr: string;
+  nextWeekEndStr: string;
   readableDate: string;
   readableTime: string;
 }
@@ -191,11 +209,32 @@ export class AssistantService {
       minute: '2-digit'
     });
 
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const dateUtc = new Date(Date.UTC(y, m - 1, d));
+    const dayOfWeek = dateUtc.getUTCDay(); // 0 is Sunday, 1 is Monday ...
+    const daysSinceMonday = (dayOfWeek + 6) % 7;
+    const thisMonday = new Date(dateUtc.getTime() - daysSinceMonday * 86400000);
+    const thisSunday = new Date(thisMonday.getTime() + 6 * 86400000);
+    const nextMonday = new Date(thisMonday.getTime() + 7 * 86400000);
+    const nextSunday = new Date(thisMonday.getTime() + 13 * 86400000);
+
+    const formatYmd = (dt: Date) => dt.toISOString().substring(0, 10);
+    const thisWeekStartStr = formatYmd(thisMonday);
+    const thisWeekEndStr = formatYmd(thisSunday);
+    const nextWeekStartStr = formatYmd(nextMonday);
+    const nextWeekEndStr = formatYmd(nextSunday);
+    const currentIso = refDate.toISOString();
+
     return {
       timeZone: validTimeZone,
       todayStr,
       tomorrowStr,
       currentTimeStr,
+      currentIso,
+      thisWeekStartStr,
+      thisWeekEndStr,
+      nextWeekStartStr,
+      nextWeekEndStr,
       readableDate,
       readableTime
     };
@@ -324,6 +363,11 @@ export class AssistantService {
       todayStr,
       tomorrowStr,
       currentTimeStr,
+      currentIso: temporalContext.currentIso,
+      thisWeekStartStr: temporalContext.thisWeekStartStr,
+      thisWeekEndStr: temporalContext.thisWeekEndStr,
+      nextWeekStartStr: temporalContext.nextWeekStartStr,
+      nextWeekEndStr: temporalContext.nextWeekEndStr,
       allSections,
       academicSections,
       careerSections,
@@ -397,6 +441,11 @@ export class AssistantService {
       todayStr,
       tomorrowStr,
       currentTimeStr,
+      currentIso: temporalContext.currentIso,
+      thisWeekStartStr: temporalContext.thisWeekStartStr,
+      thisWeekEndStr: temporalContext.thisWeekEndStr,
+      nextWeekStartStr: temporalContext.nextWeekStartStr,
+      nextWeekEndStr: temporalContext.nextWeekEndStr,
       activeTasks,
       allTasks,
       calendarEvents,
@@ -543,7 +592,119 @@ export class AssistantService {
       }
     }
 
-    // 4. Meeting Lookup: "When is my meeting?", "Do I have any meetings?", "When is the interview?"
+    // 4. Pending applications & registrations: "Show my pending applications", "Do I have any pending applications?"
+    if (
+      /\b(pending applications?|my applications?|applications? pending|pending registration|applications?)\b/i.test(q) &&
+      /\b(pending|show|list|what|my|do i have|any|check)\b/i.test(q)
+    ) {
+      return { intent: 'pending_applications' };
+    }
+
+    // 5. Placement communications & updates: "Summarize my latest placement emails", "Placement updates"
+    if (
+      (/\b(placement|placements|campus drive|tcs hackquest|hackquest|te ai cup)\b/i.test(q) &&
+       /\b(email|emails|update|updates|summary|summarize|latest|news|what|do i have|show|check)\b/i.test(q)) ||
+      q.includes('placement email') || q.includes('placement updates') || q.includes('placement update')
+    ) {
+      return { intent: 'placement_updates' };
+    }
+
+    // 6. Internship updates query: "What is the latest update about my internship?", "Any internship updates?"
+    if (
+      (/\b(internships?|intern)\b/i.test(q) &&
+       /\b(update|updates|latest|status|email|emails|summary|summarize|what is the latest|show|news)\b/i.test(q))
+    ) {
+      return { intent: 'internship_updates' };
+    }
+
+    // 7. Tomorrow Queries: "What should I focus on tomorrow?", "What events do I have tomorrow?", "What is happening tomorrow?"
+    if (/\btomorrow\b/i.test(q)) {
+      if (/\b(events?|calendar|meetings?)\b/i.test(q)) {
+        return { intent: 'focus_tomorrow', subType: 'events_only' };
+      }
+      if (/\b(tasks?|responsibilit(y|ies)|due|deadlines?|submit|submission)\b/i.test(q)) {
+        return { intent: 'focus_tomorrow', subType: 'tasks_only' };
+      }
+      return { intent: 'focus_tomorrow', subType: 'all' };
+    }
+
+    // 8. Next Week / This Week Queries: "Do I have any events next week?", "What is happening this week?"
+    if (/\bnext week\b/i.test(q)) {
+      return { intent: 'week_schedule', subType: 'next_week' };
+    }
+    if (/\bthis week\b/i.test(q)) {
+      return { intent: 'week_schedule', subType: 'this_week' };
+    }
+
+    // 9. Upcoming Calendar Events: "What are my upcoming events?", "Show upcoming events"
+    if (
+      (/\b(events?)\b/i.test(q) && /\b(upcoming|coming up|future|scheduled|next)\b/i.test(q) && !/\b(tasks?|responsibilit)\b/i.test(q)) ||
+      q === 'what are my upcoming events' || q === 'what are my upcoming events?' ||
+      q === 'show upcoming events' || q === 'upcoming events'
+    ) {
+      return { intent: 'upcoming_events' };
+    }
+
+    // 10. Calendar Events Today: "What events do I have today?", "What is on my calendar today?"
+    if (
+      (/\b(events?|calendar)\b/i.test(q) && /\b(today|tonight)\b/i.test(q)) ||
+      q === 'what events do i have today?' || q === 'what events do i have today' ||
+      q === 'what is on my calendar today' || q === 'what is on my calendar today?' ||
+      q === 'show my calendar today'
+    ) {
+      return { intent: 'calendar_schedule', subType: 'today_only' };
+    }
+
+    // 11. Upcoming Tasks: "What are my upcoming tasks?", "Show my upcoming tasks"
+    if (
+      (/\b(tasks?|responsibilit(y|ies))\b/i.test(q) && /\b(upcoming|coming up|future|next)\b/i.test(q)) ||
+      q === 'what are my upcoming tasks' || q === 'what are my upcoming tasks?' ||
+      q === 'show my upcoming tasks' || q === 'show upcoming tasks' || q === 'upcoming tasks'
+    ) {
+      return { intent: 'upcoming_deadlines', subType: 'tasks_only' };
+    }
+
+    // 12. Approaching Deadlines: "What deadlines are approaching?", "What deadlines are coming up?"
+    if (
+      (/\b(deadlines?|due)\b/i.test(q) && /\b(approaching|coming up|upcoming|soon|next)\b/i.test(q)) ||
+      q === 'what deadlines are approaching' || q === 'what deadlines are approaching?' ||
+      q === 'what deadlines are coming up' || q === 'what deadlines are coming up?' ||
+      q === 'what is coming up' || q === "what's coming up"
+    ) {
+      return { intent: 'upcoming_deadlines' };
+    }
+
+    // 13. Overdue Tasks: "Which tasks are overdue?", "What tasks are overdue?"
+    if (
+      /\b(overdue|past due|missed deadline|missed deadlines|which tasks are overdue|what tasks are overdue|what is overdue)\b/i.test(q) ||
+      (/\bmissed\b/i.test(q) && /\b(deadline|deadlines|task|tasks|responsibility|responsibilities)\b/i.test(q)) ||
+      q === 'what did i miss?' || q === 'what did i miss' || q === 'do i have anything overdue?' || q === 'do i have anything overdue'
+    ) {
+      return { intent: 'overdue' };
+    }
+
+    // 14. Single Highest Priority Task: "What is the most important thing I need to do?", "What should I complete first?"
+    if (
+      /\b(most important( thing)?|what should i (do|complete) first|which task should i (do|complete) first|highest priority|top priority|most urgent)\b/i.test(q) ||
+      q.includes('most important') || q.includes('do first') || q.includes('complete first')
+    ) {
+      return { intent: 'prioritization', subType: 'highest_single' };
+    }
+
+    // 15. Prioritization Today: "What should I focus on today?", "What do I need to complete today?"
+    if (
+      /\b(focus|focus on|complete today|do today|work on today|priorities for today|daily priorities|my priorities today|what should i do today|what to do today|what do i need to do today|what do i need to complete today|what to complete today)\b/i.test(q) ||
+      q === 'what should i focus on today?' ||
+      q === 'what should i focus on today' ||
+      q === 'what should i do today?' ||
+      q === 'what should i do today' ||
+      q === 'what to do today' ||
+      q === 'what should i focus on'
+    ) {
+      return { intent: 'prioritization' };
+    }
+
+    // 16. Meeting Lookup: "When is my meeting?", "Do I have any meetings?", "When is the interview?"
     const isMeetingQuery = 
       (/\b(when is (my|the|our|next)?\s*(meeting|interview|sync|viva|evaluation|call)|what time is (my|the|our)?\s*(meeting|interview|sync|viva|call)|do i have any meetings|any meetings today|show my meetings|what meetings do i have)\b/i.test(q)) ||
       (/\bwhen is\b/i.test(q) && /\b(meeting|sync|interview|viva|evaluation|call)\b/i.test(q)) ||
@@ -558,7 +719,7 @@ export class AssistantService {
       };
     }
 
-    // 5. Opportunities & Internships: "Any new internships?", "Are there any job opportunities?", "Any hackathons?", "Any new career opportunities?"
+    // 17. Opportunities & Internships: "Any new internships?", "Are there any job opportunities?"
     const isOpportunityQuery = 
       (/\b(any|new|show|find|list|what|are there any)?\s*(new)?\s*(internships?|intern|fellowships?|job opportunities|jobs?|hackathons?|placements?|campus drives?|contests?|hiring|opportunities|career)\b/i.test(q)) ||
       q.includes('internship') || q.includes('opportunity') || q.includes('opportunities') || q.includes('job opportunity') || q.includes('campus drive') || q.includes('placement drive') || q.includes('career opportunit');
@@ -567,7 +728,7 @@ export class AssistantService {
       return { intent: 'opportunities' };
     }
 
-    // 6. Passed & Overdue items query: "What has passed?", "What did I miss?", "What is overdue?"
+    // 18. Passed items query: "What has passed?", "What did I miss?"
     if (
       /\b(what has passed|what is passed|show passed|what passed|passed responsibilities|concluded)\b/i.test(q) ||
       q === 'what has passed?' || q === 'what has passed' || q === 'what is passed'
@@ -575,16 +736,7 @@ export class AssistantService {
       return { intent: 'passed' };
     }
 
-    if (
-      /\b(overdue|past due|missed deadline|missed deadlines|late on|behind on|passed deadline|passed their deadline|have i missed)\b/i.test(q) ||
-      (/\bmissed\b/i.test(q) && /\b(deadline|deadlines|task|tasks|responsibility|responsibilities|assignment|assignments)\b/i.test(q)) ||
-      q === 'what did i miss?' || q === 'what did i miss' || q === 'do i have anything overdue?' || q === 'do i have anything overdue'
-    ) {
-      return { intent: 'overdue' };
-    }
-
-    // 7. "What is happening today?" / "What is on my schedule today?"
-    // Comprehensive response using both today's calendar events AND time-sensitive responsibilities
+    // 19. "What is happening today?" / "What is on my schedule today?"
     if (
       q === 'what is happening today?' ||
       q === 'what is happening today' ||
@@ -596,7 +748,7 @@ export class AssistantService {
       return { intent: 'today_overview' };
     }
 
-    // 8. Explicit Calendar schedule query: "What is on my calendar today?"
+    // 20. Explicit Calendar schedule query: "What is on my calendar?"
     if (
       (/\b(calendar)\b/i.test(q) &&
        !/\b(email|emails|mail|inbox|overdue)\b/i.test(q) &&
@@ -606,17 +758,7 @@ export class AssistantService {
       return { intent: 'calendar_schedule' };
     }
 
-    // 9. "What is due tomorrow?" / "What is happening tomorrow?"
-    if (
-      /\btomorrow\b/i.test(q) &&
-      (/\b(due|deadline|deadlines|submit|submission|assignment|task|responsibilit|happening|schedule|scheduled|on|events?)\b/i.test(q) ||
-       /\bwhat('s| is)? (due|on|scheduled|happening)\b/i.test(q) ||
-       q === 'what is happening tomorrow' || q === 'what is happening tomorrow?' || q === 'what happens tomorrow' || q === 'what is due tomorrow')
-    ) {
-      return { intent: 'upcoming_deadlines', subType: 'tomorrow_only' };
-    }
-
-    // 10. Specific "Why is [X] priority / urgent" query
+    // 21. Specific "Why is [X] priority / urgent" query
     if (/\bwhy\b/i.test(q) && /\b(high priority|priority|urgent)\b/i.test(q)) {
       const specificMatch = this.findMatchingRecords(q, params.allTasks, params.emails, params.calendarEvents);
       return {
@@ -630,36 +772,7 @@ export class AssistantService {
       };
     }
 
-    // 11. Single highest priority responsibility query
-    if (
-      /\b(highest priority|top priority|most important task|which task should i do first|what should i do first|most urgent task)\b/i.test(q)
-    ) {
-      return { intent: 'prioritization', subType: 'highest_single' };
-    }
-
-    // 12. Prioritization: "What should I focus on today?", "What do I need to complete today?", etc.
-    if (
-      /\b(focus|focus on|complete today|do today|work on today|priorities for today|daily priorities|my priorities today|what should i do today|what to do today|what do i need to do today|what do i need to complete today|what to complete today)\b/i.test(q) ||
-      q === 'what should i focus on today?' ||
-      q === 'what should i focus on today' ||
-      q === 'what should i do today?' ||
-      q === 'what should i do today' ||
-      q === 'what to do today' ||
-      q === 'what should i focus on'
-    ) {
-      return { intent: 'prioritization' };
-    }
-
-    // 13. Upcoming deadlines: "What is coming up?", "What deadlines are coming up?", "What deadlines are upcoming?"
-    if (
-      (/\b(deadlines?|due)\b/i.test(q) && /\b(coming up|upcoming|soon|next|this week|approaching)\b/i.test(q)) ||
-      /^(what deadlines are coming up|what are my upcoming deadlines|what deadlines are upcoming|what is due soon|upcoming deadlines|what is coming up|what's coming up)/i.test(q) ||
-      q === 'what is coming up' || q === "what's coming up" || q.includes('what is coming up') || q.includes("what's coming up") || q === 'what deadlines are upcoming' || q === 'what deadlines are upcoming?'
-    ) {
-      return { intent: 'upcoming_deadlines' };
-    }
-
-    // 14. Email summary & actionable email requests
+    // 22. Email summary & actionable email requests
     if (
       /\b(email|emails|gmail|inbox|messages)\b/i.test(q) &&
       (/\b(summar|important|unread|action|response|respond|latest|recent|check)\b/i.test(q) ||
@@ -1000,6 +1113,11 @@ export class AssistantService {
       todayStr, 
       tomorrowStr, 
       currentTimeStr,
+      currentIso,
+      thisWeekStartStr,
+      thisWeekEndStr,
+      nextWeekStartStr,
+      nextWeekEndStr,
       allSections,
       academicSections,
       careerSections,
@@ -1065,24 +1183,131 @@ export class AssistantService {
         }
 
         if (classification.subType === 'highest_single') {
-          const pMap: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
-          const sortedByPriority = [...yourDayItems].sort((a, b) => {
-            const pA = a.rawResponsibility?.priority ? (pMap[a.rawResponsibility.priority] || 1) : 1;
-            const pB = b.rawResponsibility?.priority ? (pMap[b.rawResponsibility.priority] || 1) : 1;
-            return pB - pA;
-          });
-          const sortedTasks = [...topTasks].sort((a, b) => {
-            return (pMap[b.priority] || 1) - (pMap[a.priority] || 1);
-          });
-          return {
-            yourDayItems: sortedByPriority.slice(0, 1),
-            prioritizedTasks: sortedTasks.slice(0, 1)
-          };
+          const dueToday = activeTasks.filter(t => isDueToday(t));
+          if (dueToday.length > 0) {
+            return { prioritizedTasks: dueToday.slice(0, 1) };
+          }
+
+          const overdueTasks = allTasks.filter(t => isOverdue(t)).sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+          const tomorrowTasks = activeTasks.filter(t => isGenuineActionableTask(t) && t.dueDate && t.dueDate.substring(0, 10) === tomorrowStr);
+          
+          if (tomorrowTasks.length > 0) {
+            return {
+              prioritizedTasks: tomorrowTasks.slice(0, 1),
+              overdueTasks: overdueTasks.slice(0, 1)
+            };
+          }
+
+          if (overdueTasks.length > 0) {
+            return { prioritizedTasks: overdueTasks.slice(0, 1) };
+          }
+
+          const upcoming = activeTasks
+            .filter(t => isGenuineActionableTask(t) && t.dueDate && t.dueDate.substring(0, 10) >= todayStr)
+            .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+          return { prioritizedTasks: upcoming.slice(0, 1) };
         }
 
         return {
           yourDayItems: yourDayItems.slice(0, 5),
           prioritizedTasks: topTasks.slice(0, 5)
+        };
+      }
+
+      case 'focus_tomorrow': {
+        const tomorrowTasks = activeTasks.filter(
+          t => isGenuineActionableTask(t) && t.dueDate && t.dueDate.substring(0, 10) === tomorrowStr
+        );
+        const tomorrowEvents = calendarEvents.filter(
+          ev => ev.startTime.startsWith(tomorrowStr) && ev.status !== 'cancelled'
+        ).sort((a, b) => a.startTime.localeCompare(b.startTime));
+        const tomorrowItems = (allSections?.upcoming || []).filter(it => {
+          if (it.formattedScheduleText.toLowerCase().includes('tomorrow')) return true;
+          if (it.date && it.date.substring(0, 10) === tomorrowStr) return true;
+          return false;
+        });
+        return { tomorrowTasks, tomorrowEvents, tomorrowItems };
+      }
+
+      case 'upcoming_events': {
+        // Upcoming calendar events must be strictly future commitments relative to the user's current time.
+        // Never return past events from September or October!
+        const referenceTime = currentIso || `${todayStr}T${currentTimeStr}:00Z`;
+        const upcomingEvents = calendarEvents
+          .filter(ev => ev.status !== 'cancelled' && (ev.startTime >= referenceTime || ev.startTime.substring(0, 10) > todayStr))
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        return { upcomingEvents };
+      }
+
+      case 'week_schedule': {
+        const isNextWeek = classification.subType === 'next_week';
+        const rangeStart = isNextWeek ? (nextWeekStartStr || tomorrowStr) : todayStr;
+        const rangeEnd = isNextWeek ? (nextWeekEndStr || '2099-12-31') : (thisWeekEndStr || '2099-12-31');
+
+        const weekTasks = activeTasks
+          .filter(t => isGenuineActionableTask(t) && t.dueDate && t.dueDate.substring(0, 10) >= rangeStart && t.dueDate.substring(0, 10) <= rangeEnd)
+          .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+        const weekEvents = calendarEvents
+          .filter(ev => ev.status !== 'cancelled' && ev.startTime.substring(0, 10) >= rangeStart && ev.startTime.substring(0, 10) <= rangeEnd)
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        return { weekTasks, weekEvents };
+      }
+
+      case 'pending_applications': {
+        const appKeywords = ['apply', 'application', 'register', 'registration', 'recruitment', 'form', 'submission', 'enroll'];
+        const matchedTasks = activeTasks.filter(t => {
+          const text = `${t.title} ${t.action || ''} ${t.description || ''}`.toLowerCase();
+          return appKeywords.some(kw => text.includes(kw));
+        }).sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+
+        const matchedDiscoveries = (discoveries || []).filter(d => {
+          const text = `${d.title} ${d.explanation || ''}`.toLowerCase();
+          return appKeywords.some(kw => text.includes(kw));
+        });
+
+        return {
+          pendingApplications: matchedTasks,
+          opportunityDiscoveries: matchedDiscoveries
+        };
+      }
+
+      case 'placement_updates': {
+        const placementKeywords = ['placement', 'campus drive', 'hackquest', 'tcs', 'te ai cup', 'hiring', 'eligibility', 'nie placement'];
+        const placementEmails = emails.filter(e => {
+          const text = `${e.subject || ''} ${e.sender || ''} ${e.snippet || ''}`.toLowerCase();
+          return placementKeywords.some(kw => text.includes(kw));
+        });
+
+        const placementTasks = activeTasks.filter(t => {
+          const text = `${t.title} ${t.action || ''} ${t.description || ''} ${t.sourceContext?.sender || ''}`.toLowerCase();
+          return placementKeywords.some(kw => text.includes(kw));
+        });
+
+        return {
+          placementEmails: placementEmails.slice(0, 5),
+          placementTasks: placementTasks.slice(0, 3)
+        };
+      }
+
+      case 'internship_updates': {
+        const internKeywords = ['internship', 'intern', 'unstop', 'airbus', 'indian army', 'hp power lab', 'corizo', 'summer intern'];
+        const internshipEmails = emails.filter(e => {
+          const text = `${e.subject || ''} ${e.sender || ''} ${e.snippet || ''}`.toLowerCase();
+          return internKeywords.some(kw => text.includes(kw));
+        });
+
+        const internshipTasks = activeTasks.filter(t => {
+          const text = `${t.title} ${t.action || ''} ${t.description || ''}`.toLowerCase();
+          return internKeywords.some(kw => text.includes(kw));
+        });
+
+        return {
+          internshipEmails: internshipEmails.slice(0, 5),
+          internshipTasks: internshipTasks.slice(0, 3)
         };
       }
 
@@ -1142,25 +1367,30 @@ export class AssistantService {
           return { tomorrowItems, tomorrowTasks, tomorrowEvents };
         }
 
-        const upcomingItems = allSections?.upcoming || [];
-        let upcoming = upcomingItems.map(it => it.rawResponsibility).filter(Boolean) as Responsibility[];
-        if (upcoming.length === 0 && upcomingItems.length === 0) {
-          upcoming = activeTasks
-            .filter(t => isGenuineActionableTask(t) && (isDueToday(t) || (t.dueDate && t.dueDate.substring(0, 10) > todayStr)))
-            .sort((a, b) => {
-              const dateCmp = (a.dueDate || '').localeCompare(b.dueDate || '');
-              if (dateCmp !== 0) return dateCmp;
-              return (a.dueTime || '99:99').localeCompare(b.dueTime || '99:99');
-            });
+        const upcomingTasks = activeTasks
+          .filter(t => isGenuineActionableTask(t) && t.dueDate && t.dueDate.substring(0, 10) >= todayStr)
+          .sort((a, b) => {
+            const dateCmp = (a.dueDate || '').localeCompare(b.dueDate || '');
+            if (dateCmp !== 0) return dateCmp;
+            return (a.dueTime || '99:99').localeCompare(b.dueTime || '99:99');
+          });
+
+        if (classification.subType === 'tasks_only') {
+          return {
+            upcomingTasks: upcomingTasks.slice(0, 8)
+          };
         }
 
+        const referenceTime = currentIso || `${todayStr}T${currentTimeStr}:00Z`;
         const upcomingEvents = calendarEvents
-          .filter(ev => ev.status !== 'cancelled' && ev.startTime >= todayStr)
+          .filter(ev => ev.status !== 'cancelled' && (ev.startTime >= referenceTime || ev.startTime.substring(0, 10) > todayStr))
           .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        const upcomingItems = allSections?.upcoming || [];
 
         return {
           upcomingItems: upcomingItems.slice(0, 8),
-          upcomingTasks: upcoming.slice(0, 8),
+          upcomingTasks: upcomingTasks.slice(0, 8),
           upcomingEvents: upcomingEvents.slice(0, 3)
         };
       }
@@ -1368,6 +1598,14 @@ export class AssistantService {
       const type = it.sourceType === 'calendar' ? 'calendar' : it.sourceType === 'gmail' ? 'gmail' : 'task';
       addSource(id, type, it.title, it.sender);
     });
+
+    filteredData.weekTasks?.forEach(t => addSource(t.id, 'task', t.title));
+    filteredData.weekEvents?.forEach(ev => addSource(ev.id, 'calendar', ev.summary));
+    filteredData.pendingApplications?.forEach(t => addSource(t.id, 'task', t.title));
+    filteredData.placementEmails?.forEach(e => addSource(e.id, 'gmail', e.subject, this.cleanSender(e.sender)));
+    filteredData.placementTasks?.forEach(t => addSource(t.id, 'task', t.title));
+    filteredData.internshipEmails?.forEach(e => addSource(e.id, 'gmail', e.subject, this.cleanSender(e.sender)));
+    filteredData.internshipTasks?.forEach(t => addSource(t.id, 'task', t.title));
 
     filteredData.todayEvents?.forEach(ev => addSource(ev.id, 'calendar', ev.summary));
     filteredData.tomorrowEvents?.forEach(ev => addSource(ev.id, 'calendar', ev.summary));
@@ -1804,6 +2042,11 @@ CORE RULES:
     todayStr: string;
     tomorrowStr: string;
     currentTimeStr: string;
+    currentIso?: string;
+    thisWeekStartStr?: string;
+    thisWeekEndStr?: string;
+    nextWeekStartStr?: string;
+    nextWeekEndStr?: string;
     activeTasks: Responsibility[];
     allTasks: Responsibility[];
     calendarEvents: CalendarEventRecord[];
@@ -1815,12 +2058,40 @@ CORE RULES:
       todayStr,
       tomorrowStr,
       currentTimeStr,
+      nextWeekStartStr,
+      nextWeekEndStr,
+      thisWeekEndStr,
       activeTasks
     } = params;
 
     switch (classification.intent) {
       // 1. “What should I focus on today?” / "What should I do today?" (Actionable Your Day items only)
       case 'prioritization': {
+        if (classification.subType === 'highest_single') {
+          const topTasks = filteredData.prioritizedTasks || [];
+          const overdueTasks = filteredData.overdueTasks || [];
+          const top = topTasks[0] || activeTasks[0];
+
+          if (!top) {
+            return "You have no pending tasks or responsibilities right now. You're completely caught up!";
+          }
+
+          const dueStr = this.formatDueString(top, todayStr, tomorrowStr);
+          const prioStr = ` [${top.priority.toUpperCase()} priority]`;
+          const actionText = top.action ? ` Action needed: ${top.action}.` : '';
+          const srcTag = this.getTaskSourceTag(top);
+
+          let resp = `The most important thing you need to do is **${top.title}**${prioStr}, which is due **${dueStr}**.${actionText} ${srcTag}`;
+
+          if (overdueTasks.length > 0 && overdueTasks[0].id !== top.id) {
+            const od = overdueTasks[0];
+            const odDate = od.dueDate ? od.dueDate.substring(0, 10) : 'an earlier date';
+            resp += `\n\n*(Note: You also have an overdue item requiring urgent resolution: **${od.title}**, missed deadline on **${odDate}**). ${this.getTaskSourceTag(od)}*`;
+          }
+
+          return resp;
+        }
+
         const yourDay = filteredData.yourDayItems || [];
         const topTasks = filteredData.prioritizedTasks || [];
         const items = yourDay.length > 0 ? yourDay : topTasks.map(t => ({
@@ -1834,15 +2105,6 @@ CORE RULES:
 
         if (items.length === 0) {
           return "You have no actionable responsibilities or deadlines due today in Your Day. You're completely caught up!";
-        }
-
-        if (classification.subType === 'highest_single') {
-          const top = items[0];
-          const dueStr = top.rawResponsibility ? this.formatDueString(top.rawResponsibility, todayStr, tomorrowStr) : (top.time ? `Today at ${top.time}` : 'Today');
-          const prioStr = top.rawResponsibility ? ` [${top.rawResponsibility.priority.toUpperCase()} priority]` : '';
-          const actionText = top.summary ? ` Action needed: ${top.summary}.` : '';
-          const srcTag = this.getItemSourceTag(top);
-          return `Your highest-priority responsibility in Your Day is **${top.title}**${prioStr}, which is due ${dueStr}.${actionText} ${srcTag}`;
         }
 
         const lines: string[] = [
@@ -1861,12 +2123,229 @@ CORE RULES:
         return lines.join('\n');
       }
 
-      // 2. “What has passed?” / "What am I overdue on?"
+      // 2. “What should I focus on tomorrow?” / Tomorrow Queries
+      case 'focus_tomorrow': {
+        const tomorrowTasks = filteredData.tomorrowTasks || [];
+        const tomorrowEvents = filteredData.tomorrowEvents || [];
+        const isEventsOnly = classification.subType === 'events_only' || /\bevents?\b/i.test(params.question);
+        const isTasksOnly = classification.subType === 'tasks_only' || /\btasks?\b/i.test(params.question);
+
+        if (isEventsOnly) {
+          if (tomorrowEvents.length === 0) {
+            return `You have no calendar events or meetings scheduled for tomorrow (**Friday, ${tomorrowStr}**).`;
+          }
+          const lines = [`Here ${tomorrowEvents.length === 1 ? 'is your event' : 'are your events'} scheduled for tomorrow (**Friday, ${tomorrowStr}**):`];
+          tomorrowEvents.forEach(ev => {
+            const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
+            const loc = ev.location ? ` at ${ev.location}` : '';
+            lines.push(`* **${ev.summary}**: Scheduled event at **${time}**${loc}. ${this.getCalendarSourceTag(ev)}`);
+          });
+          return lines.join('\n');
+        }
+
+        if (isTasksOnly) {
+          if (tomorrowTasks.length === 0) {
+            return `You have no tasks or responsibilities due tomorrow (**Friday, ${tomorrowStr}**).`;
+          }
+          const lines = [`Here ${tomorrowTasks.length === 1 ? 'is the task' : 'are the tasks'} due tomorrow (**Friday, ${tomorrowStr}**):`];
+          tomorrowTasks.forEach(t => {
+            const timeStr = t.dueTime ? ` by ${t.dueTime}` : '';
+            const actionText = t.action ? ` Action: ${t.action}.` : '';
+            const srcTag = this.getTaskSourceTag(t);
+            lines.push(`* **${t.title}**: Due **Tomorrow (${tomorrowStr})${timeStr}** [${t.priority.toUpperCase()} priority].${actionText} ${srcTag}`);
+          });
+          return lines.join('\n');
+        }
+
+        // Default focus for tomorrow: combines tomorrow tasks and calendar events
+        if (tomorrowTasks.length === 0 && tomorrowEvents.length === 0) {
+          return `You have no tasks due tomorrow and no calendar events scheduled for tomorrow (**Friday, ${tomorrowStr}**). You're completely free!`;
+        }
+
+        const lines: string[] = [`Here is what you should focus on tomorrow (**Friday, ${tomorrowStr}**):`];
+
+        if (tomorrowTasks.length > 0) {
+          lines.push(`\n### Tasks & Deadlines Due Tomorrow`);
+          tomorrowTasks.forEach(t => {
+            const timeStr = t.dueTime ? ` by ${t.dueTime}` : '';
+            const actionText = t.action ? ` Action: ${t.action}.` : '';
+            const srcTag = this.getTaskSourceTag(t);
+            lines.push(`* **${t.title}**: Due **Tomorrow (${tomorrowStr})${timeStr}** [${t.priority.toUpperCase()} priority].${actionText} ${srcTag}`);
+          });
+        }
+
+        lines.push(`\n### Calendar Schedule Tomorrow`);
+        if (tomorrowEvents.length > 0) {
+          tomorrowEvents.forEach(ev => {
+            const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
+            const loc = ev.location ? ` at ${ev.location}` : '';
+            lines.push(`* **${ev.summary}**: Scheduled event at **${time}**${loc}. ${this.getCalendarSourceTag(ev)}`);
+          });
+        } else {
+          lines.push(`* You have no calendar events or meetings scheduled for tomorrow.`);
+        }
+
+        return lines.join('\n');
+      }
+
+      // 3. “What are my upcoming events?”
+      case 'upcoming_events': {
+        const events = filteredData.upcomingEvents || [];
+        if (events.length === 0) {
+          return "You have no upcoming calendar events scheduled.";
+        }
+        const lines: string[] = ["Here are your upcoming calendar events:"];
+        events.forEach(ev => {
+          const dateStr = ev.startTime.substring(0, 10);
+          const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
+          const loc = ev.location ? ` at ${ev.location}` : '';
+          lines.push(`* **${ev.summary}**: **${dateStr}** at ${time}${loc}. ${this.getCalendarSourceTag(ev)}`);
+        });
+        return lines.join('\n');
+      }
+
+      // 4. “What is scheduled next week / this week?”
+      case 'week_schedule': {
+        const isNextWeek = classification.subType === 'next_week';
+        const label = isNextWeek ? `next week (${nextWeekStartStr || 'Nov 9'} – ${nextWeekEndStr || 'Nov 15'})` : `this week (through ${thisWeekEndStr || 'Nov 8'})`;
+        const weekTasks = filteredData.weekTasks || [];
+        const weekEvents = filteredData.weekEvents || [];
+        const asksForEvents = /\bevents?\b/i.test(params.question);
+
+        if (asksForEvents) {
+          if (weekEvents.length === 0) {
+            return `You have no calendar events scheduled for ${label}.`;
+          }
+          const lines = [`Here are your scheduled events for ${label}:`];
+          weekEvents.forEach(ev => {
+            const dateStr = ev.startTime.substring(0, 10);
+            const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
+            lines.push(`* **${ev.summary}**: **${dateStr}** at ${time}. ${this.getCalendarSourceTag(ev)}`);
+          });
+          return lines.join('\n');
+        }
+
+        if (weekTasks.length === 0 && weekEvents.length === 0) {
+          return `You have no tasks or calendar events scheduled for ${label}.`;
+        }
+
+        const lines = [`Here is what is scheduled for ${label}:`];
+        if (weekTasks.length > 0) {
+          lines.push(`\n### Tasks & Deadlines`);
+          weekTasks.forEach(t => {
+            const dueStr = t.dueDate ? t.dueDate.substring(0, 10) : 'Next week';
+            const actionText = t.action ? ` Action: ${t.action}.` : '';
+            lines.push(`* **${t.title}**: Due **${dueStr}** [${t.priority.toUpperCase()} priority].${actionText} ${this.getTaskSourceTag(t)}`);
+          });
+        }
+        if (weekEvents.length > 0) {
+          lines.push(`\n### Calendar Events`);
+          weekEvents.forEach(ev => {
+            const dateStr = ev.startTime.substring(0, 10);
+            const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
+            lines.push(`* **${ev.summary}**: **${dateStr}** at ${time}. ${this.getCalendarSourceTag(ev)}`);
+          });
+        } else {
+          lines.push(`\n### Calendar Events\n* You have no calendar events scheduled for ${label}.`);
+        }
+        return lines.join('\n');
+      }
+
+      // 5. “Show my pending applications”
+      case 'pending_applications': {
+        const apps = filteredData.pendingApplications || [];
+        const opps = filteredData.opportunityDiscoveries || [];
+        if (apps.length === 0 && opps.length === 0) {
+          return "You currently have no pending applications or registrations in your records.";
+        }
+
+        const lines = ["Here are your pending applications and registration deadlines:"];
+        const seen = new Set<string>();
+
+        apps.forEach(t => {
+          seen.add(t.title.toLowerCase());
+          const dueStr = t.dueDate ? `Due: **${this.formatDueString(t, todayStr, tomorrowStr)}**` : 'Active / Pending';
+          const actionText = t.action ? ` Action: ${t.action}.` : '';
+          const srcTag = this.getTaskSourceTag(t);
+          lines.push(`* **${t.title}**: ${dueStr} [${t.priority.toUpperCase()} priority].${actionText} ${srcTag}`);
+        });
+
+        opps.forEach(d => {
+          if (!seen.has(d.title.toLowerCase())) {
+            seen.add(d.title.toLowerCase());
+            const dateStr = d.primaryDate ? ` [Closing: **${d.primaryDate}**]` : '';
+            const srcTag = d.sourceType === 'calendar' ? `[Source: Calendar | id:${d.sourceId}]` : `[Source: Gmail | id:${d.sourceId}]`;
+            lines.push(`* **${d.title}**: ${d.explanation}${dateStr} ${srcTag}`);
+          }
+        });
+
+        return lines.join('\n');
+      }
+
+      // 6. “Summarize my latest placement emails”
+      case 'placement_updates': {
+        const emails = filteredData.placementEmails || [];
+        const tasks = filteredData.placementTasks || [];
+
+        if (emails.length === 0 && tasks.length === 0) {
+          return "You have no recent placement or campus recruitment updates in your connected accounts.";
+        }
+
+        const lines = ["Here is a summary of your latest placement and recruitment communications:"];
+
+        emails.forEach(e => {
+          const sender = this.cleanSender(e.sender);
+          const snippet = e.snippet ? ` — ${e.snippet.substring(0, 140).trim()}...` : '';
+          const srcTag = this.getEmailSourceTag(e);
+          lines.push(`* **${e.subject || 'Placement Notice'}**: From ${sender}${snippet} ${srcTag}`);
+        });
+
+        if (tasks.length > 0) {
+          lines.push(`\n### Associated Placement Tasks`);
+          tasks.forEach(t => {
+            const dueStr = t.dueDate ? ` (Due: **${this.formatDueString(t, todayStr, tomorrowStr)}**)` : '';
+            lines.push(`* **${t.title}**${dueStr}: ${t.action || t.description || 'Action required.'} ${this.getTaskSourceTag(t)}`);
+          });
+        }
+
+        return lines.join('\n');
+      }
+
+      // 7. “What is the latest update about my internship?”
+      case 'internship_updates': {
+        const emails = filteredData.internshipEmails || [];
+        const tasks = filteredData.internshipTasks || [];
+
+        if (emails.length === 0 && tasks.length === 0) {
+          return "You have no recent internship updates or announcements in your connected accounts.";
+        }
+
+        const lines = ["Here is the latest update regarding internships and student opportunities:"];
+
+        emails.forEach(e => {
+          const sender = this.cleanSender(e.sender);
+          const snippet = e.snippet ? ` — ${e.snippet.substring(0, 140).trim()}...` : '';
+          const srcTag = this.getEmailSourceTag(e);
+          lines.push(`* **${e.subject || 'Internship Opportunity'}**: From ${sender}${snippet} ${srcTag}`);
+        });
+
+        if (tasks.length > 0) {
+          lines.push(`\n### Associated Internship Tasks`);
+          tasks.forEach(t => {
+            const dueStr = t.dueDate ? ` (Due: **${this.formatDueString(t, todayStr, tomorrowStr)}**)` : '';
+            lines.push(`* **${t.title}**${dueStr}: ${t.action || t.description || 'Action required.'} ${this.getTaskSourceTag(t)}`);
+          });
+        }
+
+        return lines.join('\n');
+      }
+
+      // 8. “What has passed?” / "Which tasks are overdue?"
       case 'passed':
       case 'overdue': {
         const passedItems = filteredData.passedItems || [];
         const overdue = filteredData.overdueTasks || [];
-        const items = passedItems.length > 0 ? passedItems : overdue.map(t => ({
+        const items = overdue.length > 0 ? overdue.map(t => ({
           id: t.id,
           title: t.title,
           summary: t.action || t.description || '',
@@ -1874,7 +2353,7 @@ CORE RULES:
           date: t.dueDate,
           time: t.dueTime,
           rawResponsibility: t
-        } as any));
+        } as any)) : passedItems;
 
         if (items.length === 0) {
           return "You have no overdue responsibilities! All of your scheduled obligations are up to date.";
@@ -1882,21 +2361,21 @@ CORE RULES:
 
         const count = items.length;
         const lines = [
-          `You have ${count} passed ${count === 1 ? 'responsibility' : 'responsibilities'} whose deadline${count === 1 ? ' has' : 's have'} passed:`
+          `You have ${count} overdue ${count === 1 ? 'task' : 'tasks'} whose deadline${count === 1 ? ' has' : 's have'} passed:`
         ];
 
         items.slice(0, 8).forEach(it => {
           const dateStr = it.formattedScheduleText || (it.date ? it.date.substring(0, 10) : 'earlier date');
           const prioStr = it.rawResponsibility ? ` [${it.rawResponsibility.priority.toUpperCase()} priority]` : '';
-          const actionText = it.summary ? ` ${it.summary}.` : ` Missed deadline on ${dateStr}.`;
+          const actionText = it.summary ? ` Action: ${it.summary}.` : ` Missed deadline on ${dateStr}.`;
           const srcTag = this.getItemSourceTag(it);
-          lines.push(`* **${it.title}**: Missed deadline on ${dateStr}${prioStr}.${actionText} ${srcTag}`);
+          lines.push(`* **${it.title}**: Missed deadline on **${dateStr}**${prioStr}.${actionText} ${srcTag}`);
         });
 
         return lines.join('\n');
       }
 
-      // 3. “What deadlines are coming up?” / "What is due tomorrow?"
+      // 9. “What deadlines are coming up?” / "What are my upcoming tasks?"
       case 'upcoming_deadlines': {
         if (classification.subType === 'tomorrow_only') {
           const tomorrowTasks = filteredData.tomorrowTasks || [];
@@ -1920,9 +2399,9 @@ CORE RULES:
             items.forEach(t => {
               const time = t.time ? ` at ${t.time}` : (t.rawResponsibility?.dueTime ? ` at ${t.rawResponsibility.dueTime}` : '');
               const prio = t.rawResponsibility ? ` [${t.rawResponsibility.priority.toUpperCase()} priority]` : '';
-              const action = t.summary ? ` ${t.summary}.` : '';
+              const action = t.summary ? ` Action: ${t.summary}.` : '';
               const srcTag = this.getItemSourceTag(t);
-              lines.push(`* **${t.title}**: Due Tomorrow${time}${prio}.${action} ${srcTag}`);
+              lines.push(`* **${t.title}**: Due **Tomorrow**${time}${prio}.${action} ${srcTag}`);
             });
           }
 
@@ -1931,53 +2410,57 @@ CORE RULES:
             lines.push(`Tomorrow's scheduled events:`);
             tomorrowEvents.forEach(ev => {
               const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
-              lines.push(`* **${ev.summary}**: Scheduled event at ${time}. [Source: Calendar | id:${ev.id}]`);
+              lines.push(`* **${ev.summary}**: Scheduled event at **${time}**. [Source: Calendar | id:${ev.id}]`);
             });
           }
 
           return lines.join('\n');
         }
 
-        const upcomingItems = filteredData.upcomingItems || [];
         const upcomingTasks = filteredData.upcomingTasks || [];
         const upcomingEvents = filteredData.upcomingEvents || [];
+        const isTasksOnly = classification.subType === 'tasks_only' || /\btasks?\b/i.test(params.question);
 
-        const items = upcomingItems.length > 0 ? upcomingItems : upcomingTasks.map(t => ({
-          id: t.id,
-          title: t.title,
-          summary: t.action || t.description || '',
-          formattedScheduleText: this.formatDueString(t, todayStr, tomorrowStr),
-          rawResponsibility: t
-        } as any));
-
-        if (items.length === 0 && upcomingEvents.length === 0) {
-          return "You currently have no upcoming deadlines scheduled in your active responsibilities.";
+        if (upcomingTasks.length === 0 && (isTasksOnly || upcomingEvents.length === 0)) {
+          return "You currently have no upcoming tasks or deadlines scheduled.";
         }
 
-        const lines: string[] = [
-          `Here is what is coming up, ordered chronologically:`
-        ];
+        const lines: string[] = [];
 
-        if (items.length > 0) {
+        if (isTasksOnly) {
+          lines.push("Here are your upcoming tasks, ordered by nearest deadline:");
+          upcomingTasks.slice(0, 8).forEach(t => {
+            const dueStr = this.formatDueString(t, todayStr, tomorrowStr);
+            const prioStr = ` [${t.priority.toUpperCase()} priority]`;
+            const actionText = t.action ? ` Action: ${t.action}.` : '';
+            const srcTag = this.getTaskSourceTag(t);
+            lines.push(`* **${t.title}**: Due **${dueStr}**${prioStr}.${actionText} ${srcTag}`);
+          });
+          return lines.join('\n');
+        }
+
+        lines.push("Here are your upcoming deadlines and approaching commitments:");
+
+        if (upcomingTasks.length > 0) {
           lines.push(`\n### Upcoming Deadlines`);
-          items.slice(0, 8).forEach(t => {
-            const dueStr = t.formattedScheduleText || (t.rawResponsibility ? this.formatDueString(t.rawResponsibility, todayStr, tomorrowStr) : 'Upcoming');
-            const prio = t.rawResponsibility ? ` [${t.rawResponsibility.priority.toUpperCase()} priority]` : '';
-            const actionText = t.summary ? ` ${t.summary}.` : '';
-            const srcTag = this.getItemSourceTag(t);
-            lines.push(`* **${t.title}**: Due **${dueStr}**${prio}.${actionText} ${srcTag}`);
+          upcomingTasks.slice(0, 8).forEach(t => {
+            const dueStr = this.formatDueString(t, todayStr, tomorrowStr);
+            const prioStr = ` [${t.priority.toUpperCase()} priority]`;
+            const actionText = t.action ? ` Action: ${t.action}.` : '';
+            const srcTag = this.getTaskSourceTag(t);
+            lines.push(`* **${t.title}**: Due **${dueStr}**${prioStr}.${actionText} ${srcTag}`);
           });
         }
 
         if (upcomingEvents.length > 0) {
           lines.push(`\n### Scheduled Events & Meetings`);
-          upcomingEvents.forEach(ev => {
+          upcomingEvents.slice(0, 3).forEach(ev => {
             const isToday = ev.startTime.startsWith(todayStr);
             const isTomorrow = ev.startTime.startsWith(tomorrowStr);
             const dateStr = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : ev.startTime.substring(0, 10);
             const time = ev.startTime.includes('T') ? ev.startTime.split('T')[1].substring(0, 5) : 'All Day';
             const loc = ev.location ? ` at ${ev.location}` : '';
-            lines.push(`* **${ev.summary}**: ${dateStr} at ${time}${loc}. [Source: Calendar | id:${ev.id}]`);
+            lines.push(`* **${ev.summary}**: **${dateStr}** at ${time}${loc}. [Source: Calendar | id:${ev.id}]`);
           });
         }
 
@@ -2468,6 +2951,54 @@ CORE RULES:
     calendarEvents: CalendarEventRecord[]
   ): string[] {
     switch (classification.intent) {
+      case 'focus_tomorrow': {
+        return [
+          'What are my upcoming tasks?',
+          'What should I focus on today?',
+          'Do I have any meetings tomorrow?'
+        ];
+      }
+
+      case 'upcoming_events': {
+        return [
+          'What deadlines are approaching?',
+          'What should I focus on today?',
+          'What is on my calendar today?'
+        ];
+      }
+
+      case 'week_schedule': {
+        return [
+          'What should I focus on tomorrow?',
+          'What deadlines are approaching?',
+          'Show my upcoming tasks'
+        ];
+      }
+
+      case 'pending_applications': {
+        return [
+          'What deadlines are approaching?',
+          'Show my upcoming tasks',
+          'What is the most important thing I need to do?'
+        ];
+      }
+
+      case 'placement_updates': {
+        return [
+          'Show my pending applications',
+          'What deadlines are approaching?',
+          'What is the most important thing I need to do?'
+        ];
+      }
+
+      case 'internship_updates': {
+        return [
+          'Show my pending applications',
+          'What deadlines are approaching?',
+          'What should I focus on today?'
+        ];
+      }
+
       case 'prioritization': {
         const top = filteredData.prioritizedTasks?.[0];
         const suggestions: string[] = [];

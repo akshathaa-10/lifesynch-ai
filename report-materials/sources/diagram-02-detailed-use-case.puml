@@ -1,0 +1,89 @@
+@startuml diagram-02-detailed-use-case
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI, Arial, sans-serif"
+skinparam defaultFontSize 11
+skinparam roundCorner 8
+
+skinparam actor {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+}
+
+actor "User" as User
+actor "Gmail Service" as Gmail <<External>>
+actor "Google Calendar" as Calendar <<External>>
+actor "Gemini LLM" as LLM <<AI Engine>>
+
+rectangle "LifeSynch AI — Detailed Use Cases" {
+    package "Data Ingestion & Auth" {
+        usecase "Ingest Digital Sources" as UC_Ingest
+        usecase "Verify OAuth 2.0 Session" as UC_Auth
+        usecase "Sync Gmail Messages" as UC_SyncGmail
+        usecase "Sync Calendar Events" as UC_SyncCal
+    }
+
+    package "AI Extraction & Intelligence" {
+        usecase "Extract Responsibilities" as UC_Extract
+        usecase "Filter Non-Actionable Content" as UC_Filter
+        usecase "Validate Schema via Zod" as UC_Zod
+        usecase "Deduplicate & Reconcile Records" as UC_Dedup
+        usecase "Surface Worth Knowing Items" as UC_WorthKnowing
+        usecase "View Opportunity Modal" as UC_OppModal
+    }
+
+    package "Intelligence Hub & Lifecycle Tracking" {
+        usecase "View Personal Intelligence Hub" as UC_Hub
+        usecase "Calculate Dynamic Urgency" as UC_Urgency
+        usecase "Filter by Life Category" as UC_CatFilter
+        usecase "Manage Responsibilities" as UC_Manage
+        usecase "View Responsibility Modal" as UC_RespModal
+        usecase "Update Status & Priority" as UC_UpdateStatus
+    }
+
+    package "Conversational Assistant & Alerts" {
+        usecase "Ask LifeSynch Assistant" as UC_Ask
+        usecase "Retrieve Contextual Records" as UC_RAG
+        usecase "Receive Proactive Reminders" as UC_Remind
+        usecase "Evaluate Deadline Thresholds" as UC_Threshold
+        usecase "Filter Notification Feed" as UC_NotifFilter
+    }
+}
+
+User --> UC_Ingest
+User --> UC_Hub
+User --> UC_Manage
+User --> UC_Ask
+User --> UC_Remind
+
+UC_Ingest .> UC_Auth : <<include>>
+UC_SyncGmail -|> UC_Ingest
+UC_SyncCal -|> UC_Ingest
+UC_SyncGmail --> Gmail
+UC_SyncCal --> Calendar
+
+UC_Extract .> UC_Filter : <<include>>
+UC_Extract .> UC_Zod : <<include>>
+UC_Extract .> UC_Dedup : <<include>>
+UC_Extract --> LLM
+UC_OppModal .> UC_WorthKnowing : <<extend>>
+
+UC_Hub .> UC_Urgency : <<include>>
+UC_CatFilter .> UC_Hub : <<extend>>
+UC_RespModal .> UC_Manage : <<extend>>
+UC_UpdateStatus .> UC_Manage : <<extend>>
+
+UC_Ask .> UC_RAG : <<include>>
+UC_Ask --> LLM
+
+UC_Remind .> UC_Threshold : <<include>>
+UC_NotifFilter .> UC_Remind : <<extend>>
+
+@enduml

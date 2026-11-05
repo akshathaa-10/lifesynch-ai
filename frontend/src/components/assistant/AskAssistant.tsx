@@ -32,12 +32,14 @@ interface AskAssistantProps {
 }
 
 const STARTER_QUESTIONS = [
-  'What should I focus on today?',
-  'What is coming up?',
-  'Any new internships or opportunities?',
-  'When is my next meeting?',
-  'Summarize my important emails',
-  'What am I overdue on?'
+  'What should I focus on tomorrow?',
+  'What are my upcoming events?',
+  'Show my upcoming tasks',
+  'What deadlines are approaching?',
+  'Which tasks are overdue?',
+  'Show my pending applications',
+  'Summarize my latest placement emails',
+  'What is the most important thing I need to do?'
 ];
 
 interface ParsedBlock {

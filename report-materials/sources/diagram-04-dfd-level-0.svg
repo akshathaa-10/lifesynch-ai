@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" width="1200" height="850">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .subtitle { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #64748b; text-anchor: middle; }
+      .entity-box { fill: #f8fafc; stroke: #334155; stroke-width: 2; rx: 8; }
+      .entity-title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .entity-tag { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; fill: #64748b; text-anchor: middle; }
+      .process-circle { fill: #f0f9ff; stroke: #0284c7; stroke-width: 3; filter: drop-shadow(0 4px 10px rgba(2,132,199,0.12)); }
+      .proc-num { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #0369a1; text-anchor: middle; }
+      .proc-title { font-family: 'Segoe UI', Arial, sans-serif; font-size: 15px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .proc-sub { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; fill: #334155; text-anchor: middle; }
+      .df-line { stroke: #0284c7; stroke-width: 1.8; fill: none; }
+      .df-line-sec { stroke: #64748b; stroke-width: 1.6; fill: none; }
+      .df-txt { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; font-weight: 600; fill: #0f172a; }
+      .df-txt-bg { fill: #ffffff; opacity: 0.95; }
+      .arrow { fill: #0284c7; }
+      .arrow-sec { fill: #64748b; }
+    </style>
+    <marker id="df-arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M 0 0 L 8 4 L 0 8 Z" class="arrow" />
+    </marker>
+    <marker id="df-arr-sec" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M 0 0 L 8 4 L 0 8 Z" class="arrow-sec" />
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" class="bg" />
+
+  <text x="600" y="42" class="title">LifeSynch AI — Data Flow Diagram (DFD Level 0: Context Diagram)</text>
+  <text x="600" y="65" class="subtitle">System Context, External Interfacing Entities, and High-Level Inbound/Outbound Data Flows</text>
+
+  <!-- Central Process 0.0 -->
+  <g transform="translate(600, 440)">
+    <circle r="140" class="process-circle" />
+    <line x1="-120" y1="-50" x2="120" y2="-50" stroke="#0284c7" stroke-width="1.5" />
+    <text x="0" y="-70" class="proc-num">0.0</text>
+    <text x="0" y="-12" class="proc-title">LifeSynch AI</text>
+    <text x="0" y="12" class="proc-title">Personal Digital Life</text>
+    <text x="0" y="36" class="proc-title">Management System</text>
+    <line x1="-120" y1="58" x2="120" y2="58" stroke="#0284c7" stroke-width="1" stroke-dasharray="3,3" />
+    <text x="0" y="80" class="proc-sub">Autonomous Aggregation &amp; Tracking</text>
+  </g>
+
+  <!-- External Entity 1: User / Student (Left) -->
+  <g transform="translate(130, 440)">
+    <rect x="-85" y="-55" width="170" height="110" class="entity-box" />
+    <text x="0" y="-15" class="entity-title">User / Student</text>
+    <text x="0" y="6" class="entity-tag">[Primary Entity]</text>
+    <text x="0" y="28" font-family="'Segoe UI', Arial" font-size="10" fill="#475569" text-anchor="middle">Student / Individual</text>
+  </g>
+
+  <!-- External Entity 2: Google OAuth 2.0 (Top Left) -->
+  <g transform="translate(250, 150)">
+    <rect x="-95" y="-45" width="190" height="90" class="entity-box" />
+    <text x="0" y="-10" class="entity-title">Google OAuth 2.0</text>
+    <text x="0" y="10" class="entity-tag">[Identity Provider]</text>
+    <text x="0" y="26" font-family="'Segoe UI', Arial" font-size="9.5" fill="#475569" text-anchor="middle">Consent &amp; Token Exchange</text>
+  </g>
+
+  <!-- External Entity 3: Gmail API (Top Right) -->
+  <g transform="translate(950, 150)">
+    <rect x="-95" y="-45" width="190" height="90" class="entity-box" />
+    <text x="0" y="-10" class="entity-title">Gmail API Service</text>
+    <text x="0" y="10" class="entity-tag">[Digital Data Source]</text>
+    <text x="0" y="26" font-family="'Segoe UI', Arial" font-size="9.5" fill="#475569" text-anchor="middle">Emails, Threads, Spam</text>
+  </g>
+
+  <!-- External Entity 4: Google Calendar (Middle Right) -->
+  <g transform="translate(1050, 440)">
+    <rect x="-95" y="-45" width="190" height="90" class="entity-box" />
+    <text x="0" y="-10" class="entity-title">Google Calendar API</text>
+    <text x="0" y="10" class="entity-tag">[Digital Data Source]</text>
+    <text x="0" y="26" font-family="'Segoe UI', Arial" font-size="9.5" fill="#475569" text-anchor="middle">Schedules, Deadlines, Events</text>
+  </g>
+
+  <!-- External Entity 5: Gemini LLM (Bottom Right) -->
+  <g transform="translate(950, 720)">
+    <rect x="-95" y="-45" width="190" height="90" class="entity-box" />
+    <text x="0" y="-10" class="entity-title">Gemini LLM Service</text>
+    <text x="0" y="10" class="entity-tag">[AI Extraction &amp; Chat Engine]</text>
+    <text x="0" y="26" font-family="'Segoe UI', Arial" font-size="9.5" fill="#475569" text-anchor="middle">Structured JSON &amp; RAG</text>
+  </g>
+
+  <!-- Data Flows between User and 0.0 -->
+  <!-- User to System -->
+  <path d="M 215 410 L 460 410" class="df-line" marker-end="url(#df-arr)" />
+  <rect x="235" y="380" width="205" height="24" rx="4" class="df-txt-bg" />
+  <text x="240" y="396" class="df-txt">1. Login Trigger &amp; Query Prompts</text>
+  <text x="240" y="426" class="df-txt" fill="#64748b">2. Task Status / Category Updates</text>
+
+  <!-- System to User -->
+  <path d="M 460 470 L 215 470" class="df-line" marker-end="url(#df-arr)" />
+  <rect x="235" y="482" width="210" height="28" rx="4" class="df-txt-bg" />
+  <text x="240" y="496" class="df-txt">1. Personalized Intelligence Feed</text>
+  <text x="240" y="508" class="df-txt">2. Prioritized Deadlines &amp; Reminders</text>
+
+  <!-- Data Flows between Google OAuth and 0.0 -->
+  <!-- System to OAuth -->
+  <path d="M 520 330 C 420 270, 350 250, 310 195" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="340" y="240" width="165" height="18" rx="3" class="df-txt-bg" />
+  <text x="345" y="253" class="df-txt">Authorization Request URL</text>
+
+  <!-- OAuth to System -->
+  <path d="M 260 195 C 290 280, 410 340, 485 365" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="270" y="305" width="180" height="18" rx="3" class="df-txt-bg" />
+  <text x="275" y="318" class="df-txt">Access/Refresh Tokens &amp; Profile</text>
+
+  <!-- Data Flows between Gmail and 0.0 -->
+  <!-- Gmail to System -->
+  <path d="M 865 190 C 780 250, 720 300, 680 320" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="740" y="240" width="190" height="18" rx="3" class="df-txt-bg" />
+  <text x="745" y="253" class="df-txt">Raw Messages, Threads &amp; Spam</text>
+
+  <!-- Data Flows between Google Calendar and 0.0 -->
+  <!-- Calendar to System -->
+  <path d="M 955 440 L 740 440" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="770" y="420" width="165" height="18" rx="3" class="df-txt-bg" />
+  <text x="775" y="433" class="df-txt">Calendar Events &amp; Schedules</text>
+
+  <!-- Data Flows between Gemini LLM and 0.0 -->
+  <!-- System to Gemini -->
+  <path d="M 680 540 C 740 600, 800 660, 865 690" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="720" y="605" width="200" height="18" rx="3" class="df-txt-bg" />
+  <text x="725" y="618" class="df-txt">Text Prompts &amp; Zod Extraction Schemas</text>
+
+  <!-- Gemini to System -->
+  <path d="M 855 745 C 770 735, 680 660, 640 580" class="df-line-sec" marker-end="url(#df-arr-sec)" />
+  <rect x="670" y="685" width="195" height="18" rx="3" class="df-txt-bg" />
+  <text x="675" y="698" class="df-txt">Structured Responsibilities &amp; Answers</text>
+
+</svg>
