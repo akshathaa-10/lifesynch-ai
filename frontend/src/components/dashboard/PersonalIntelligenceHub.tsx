@@ -828,7 +828,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           {greeting}, {userName}
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 max-w-2xl leading-relaxed">
-          LifeSynch continuously understands your academic, career, and personal digital life across Gmail and Google Calendar.
+          LifeSynch AI continuously understands your academic, career, and personal digital life across Gmail and Google Calendar.
         </p>
       </section>
 
@@ -1070,7 +1070,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                Ask LifeSynch
+                Ask LifeSynch AI
               </h2>
               <p className="text-xs text-slate-500">
                 Explore your classified emails, calendar events, and academic records using AI.

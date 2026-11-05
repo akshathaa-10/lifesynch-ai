@@ -495,7 +495,7 @@ export function isInformationalEmailNotResponsibility(item: {
   // 2. Program information & schedules without user submission or personal assignment
   // e.g. "The SDP program will run from the 13th to the 17th"
   const isProgramInfo = isProgramScheduleOrEventDateRange(corpus);
-  const hasSubmissionObligation = /\b(submit|submission|upload|pay|payment|tuition|fee|exam|viva|assessment|test|interview|apply\s+by|register\s+before|last\s+date\s+to\s+apply)\b/i.test(corpus);
+  const hasSubmissionObligation = /\b(submit|submission|upload|pay|payment|tuition|fee|exam|viva|assessment|test|interview|apply|application|register|registration|tickets?|purchase|buy|enroll|enrolment|due\s+by|deadline|closes?|last\s+date)\b/i.test(corpus);
 
   if (isProgramInfo && !hasSubmissionObligation) {
     return true;
@@ -559,7 +559,7 @@ export function sanitizeTaskDeadline(item: {
   // If text describes a program schedule / date range (e.g. "will run from 13th to 17th", "sessions from Oct 13 to 17"):
   // That date is an EVENT / PROGRAM DATE, NOT a submission deadline!
   const isScheduleDate = isProgramScheduleOrEventDateRange(corpus);
-  const hasGenuineSubmissionDeadline = /\b(submit\s+by|submission\s+deadline|due\s+by|due\s+on|last\s+date|upload\s+before|pay\s+before|apply\s+by|register\s+by|deadline\s*:)\b/i.test(corpus);
+  const hasGenuineSubmissionDeadline = /\b(submit\s+(by|before|on|until)|submission\s+(deadline|date|by|due)|due\s+(by|on|before|date)|last\s+date(\s+of|\s+for|\s+to)?|upload\s+(before|by|on)|pay(\s+fee|\s+tuition)?\s+(before|by|on)|payment\s+deadline|apply\s+(by|before|on|until)|application\s+(deadline|due|closes?|end)|register\s+(by|before|on|until|institution)|registration\s+(deadline|closes?|end|last\s+date)|tickets?(\s+sale|\s+booking)?\s+(by|before|on|ends?|closes?|at)|purchase(\s+tickets?)?\s+(by|before|on|before)|deadline\s*:?|closing\s+date|closes?\s+on|ends?\s+on)\b/i.test(corpus);
 
   if (isScheduleDate && !hasGenuineSubmissionDeadline) {
     // Unset the deadline — it is program information, NOT a deadline

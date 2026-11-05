@@ -12,7 +12,10 @@ import {
   Calendar as CalendarIcon,
   Mail,
   CheckSquare,
-  ChevronRight
+  ChevronRight,
+  User as UserIcon,
+  ShieldCheck,
+  ChevronDown
 } from 'lucide-react';
 import { User, ReminderNotification, Responsibility, CalendarEventRecord, EmailRecord } from '@lifesynch/shared';
 import { performGlobalSearch } from '../../services/globalSearchService';
@@ -66,11 +69,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
-  // Close notifications or search dropdown on outside click
+  // Close notifications, search dropdown, or profile menu on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -79,6 +84,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       }
       if (searchContainerRef.current && !searchContainerRef.current.contains(target)) {
         setIsSearchFocused(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(target)) {
+        setShowProfileMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -263,10 +271,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Sparkles className="w-4 h-4 text-sky-300" />
           </div>
           <div className="flex flex-col">
-            <span className="font-bold tracking-tight text-white text-base leading-none">
-              LifeSynch
-            </span>
-            <span className="text-[10px] text-slate-300 font-medium tracking-wide mt-0.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-serif italic text-lg tracking-tight text-white font-semibold leading-none">
+                LifeSynch
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-[#e2edf2] text-[#34515e] border border-[#c2dde6]">
+                AI
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-300 font-medium tracking-wide mt-1">
               Personal Intelligence
             </span>
           </div>
@@ -679,10 +692,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* User Profile Card matching top-right card from reference design */}
+        {/* User Profile Avatar with Dropdown */}
         {user ? (
-          <div className="flex items-center gap-2 bg-white rounded-2xl px-3 py-1.5 shadow-sm text-slate-800 border border-white/20">
-            <div className="flex items-center gap-2 text-xs">
+          <div className="relative" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => setShowProfileMenu(prev => !prev)}
+              className="flex items-center gap-2 bg-white hover:bg-slate-50 rounded-2xl px-2.5 py-1.5 shadow-xs text-slate-800 border border-slate-200/80 transition-all cursor-pointer group"
+              title="Open user profile menu"
+            >
               {user.picture ? (
                 <img
                   src={user.picture}
@@ -699,15 +717,58 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {user.name || 'User'}
                 </div>
               </div>
-            </div>
-
-            <button
-              onClick={onLogout}
-              title="Sign Out"
-              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-0.5"
-            >
-              <LogOut className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform" />
             </button>
+
+            {/* Profile Dropdown Menu */}
+            {showProfileMenu && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 space-y-1 text-xs text-slate-700 animate-fadeIn z-50">
+                {/* Header */}
+                <div className="px-3 py-2 border-b border-slate-100">
+                  <p className="font-bold text-slate-900 truncate">{user.name || 'User'}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
+                </div>
+
+                {/* Dropdown Options */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onNavigateToTab?.('profile');
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer text-slate-700 font-medium"
+                >
+                  <UserIcon className="w-3.5 h-3.5 text-slate-500" />
+                  <span>My Profile</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onNavigateToTab?.('profile');
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer text-slate-700 font-medium"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Connected Accounts</span>
+                </button>
+
+                <div className="border-t border-slate-100 my-1" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onLogout();
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 transition-colors cursor-pointer font-medium"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

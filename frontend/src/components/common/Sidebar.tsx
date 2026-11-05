@@ -30,7 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'tasks', label: 'Responsibilities', icon: CheckSquare, badge: taskCount > 0 ? taskCount : undefined },
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon, badge: eventCount > 0 ? eventCount : undefined },
     { id: 'gmail', label: 'Inbox', icon: Mail, badge: emailCount > 0 ? emailCount : undefined },
-    { id: 'assistant', label: 'Ask LifeSynch', icon: Sparkles }
+    { id: 'assistant', label: 'Ask LifeSynch AI', icon: Sparkles }
   ];
 
   return (
@@ -45,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="font-serif italic text-2xl text-white tracking-wide font-normal group-hover:scale-105 transition-transform">
               LifeSynch
             </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[#e2edf2] text-[#34515e] border border-[#c2dde6]">AI</span>
             <Sparkles className="w-3.5 h-3.5 text-sky-300" />
           </div>
         </div>

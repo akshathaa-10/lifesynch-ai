@@ -755,7 +755,7 @@ export const AskAssistant: React.FC<AskAssistantProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                Ask LifeSynch
+                Ask LifeSynch AI
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#e2edf2] text-[#34515e] border border-[#d2e5ed]">
                 AI Assistant

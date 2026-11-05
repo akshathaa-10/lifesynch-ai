@@ -1,21 +1,39 @@
 import React from 'react';
-import { Sparkles, Shield, AlertTriangle } from 'lucide-react';
+import { Sparkles, Shield, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-export const LoginPage: React.FC = () => {
+interface LoginPageProps {
+  onBackToLanding?: () => void;
+}
+
+export const LoginPage: React.FC<LoginPageProps> = ({ onBackToLanding }) => {
   const { loginWithGoogle, isLoading, error } = useAuth();
 
   return (
-    <div className="min-h-screen bg-[#edf2f6] flex flex-col justify-center items-center px-4 py-12 relative text-slate-800 select-none">
+    <div className="min-h-screen bg-gradient-to-b from-white via-indigo-50/15 to-[#edf2f6] flex flex-col justify-center items-center px-4 py-12 relative text-slate-800 select-none">
+      {/* Top Navigation Back to Landing */}
+      {onBackToLanding && (
+        <div className="absolute top-6 left-6 z-20">
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-semibold shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Home</span>
+          </button>
+        </div>
+      )}
+
       {/* Subtle ambient background glow */}
       <div 
         aria-hidden="true" 
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-[#34515e]/5 rounded-full blur-[120px] pointer-events-none" 
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] bg-indigo-500/5 rounded-full blur-[140px] pointer-events-none" 
       />
 
-      <div className="max-w-[400px] w-full relative z-10">
+      <div className="max-w-[420px] w-full relative z-10">
         {/* White Login Card */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-8 sm:p-9 shadow-xl shadow-slate-200/50 space-y-7 text-center">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-8 sm:p-10 shadow-xl shadow-slate-200/60 space-y-7 text-center">
           
           {/* LifeSynch AI Logo */}
           <div className="flex justify-center">
@@ -26,8 +44,8 @@ export const LoginPage: React.FC = () => {
 
           {/* Heading & Tagline */}
           <div className="space-y-1.5">
-            <h1 className="text-2xl font-bold tracking-tight text-[#1a2d36]">
-              LifeSynch AI
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Welcome to LifeSynch AI
             </h1>
             <p className="text-sm text-slate-500 font-normal">
               Your digital life, intelligently organized.
@@ -55,7 +73,7 @@ export const LoginPage: React.FC = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span className="text-slate-600">Connecting...</span>
+                  <span className="text-slate-600">Connecting to Google...</span>
                 </div>
               ) : (
                 <>
@@ -83,13 +101,18 @@ export const LoginPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Subtle Security Reassurance */}
+          {/* Privacy Note */}
           <div className="pt-1 flex items-center justify-center gap-1.5 text-xs text-slate-400">
             <Shield className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Secure & private Google authentication</span>
+            <span>Read-only Gmail & Calendar OAuth verification</span>
           </div>
 
         </div>
+
+        {/* Small bottom helper */}
+        <p className="text-center text-xs text-slate-400 mt-6">
+          By signing in, you connect your personal Google services for private AI organization.
+        </p>
       </div>
     </div>
   );

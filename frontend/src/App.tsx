@@ -18,7 +18,9 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LandingPage } from './components/landing/LandingPage';
 import { LoginPage } from './components/auth/LoginPage';
+import { ProfilePage } from './components/profile/ProfilePage';
 import { AuthCallback } from './components/auth/AuthCallback';
 import { AppLayout } from './components/layout/AppLayout';
 import { AskAssistant } from './components/assistant/AskAssistant';
@@ -842,11 +844,13 @@ const MainDashboard: React.FC = () => {
         const mergedSources = Array.from(new Set([...(existing.sources || []), ...(item.sources || [])])) as ('gmail' | 'calendar' | 'manual')[];
         const mergedSource = isBoth ? 'both' : (existing.source === 'both' ? 'both' : (item.source === 'both' ? 'both' : (existing.source || item.source)));
 
+        const bestAction = existing.action || item.action || (existing.metadata?.action as string) || (item.metadata?.action as string) || (item.sourceContext?.nextStep as string) || (existing.sourceContext?.nextStep as string);
+
         reconciled[matchIdx] = {
           ...existing,
           title: existing.title.length >= item.title.length ? existing.title : item.title,
           description: existing.description || item.description,
-          action: existing.action || item.action,
+          action: bestAction,
           dueDate: existing.dueDate || item.dueDate,
           dueTime: existing.dueTime || item.dueTime,
           source: mergedSource,
@@ -855,10 +859,11 @@ const MainDashboard: React.FC = () => {
           sourceContext: { ...(item.sourceContext || {}), ...(existing.sourceContext || {}) }
         };
       } else {
+        const act = item.action || (item.metadata?.action as string) || (item.sourceContext?.nextStep as string) || '';
         reconciled.push({
           ...item,
           title: formatTitleText(item.title),
-          action: formatActionText(item.action, item.title)
+          action: formatActionText(act, item.title)
         });
       }
     }
@@ -1185,8 +1190,9 @@ const MainDashboard: React.FC = () => {
       // 2. Check if item is an informational email, general announcement, program information, or lacks a genuine action deadline
       const classification = (t.sourceContext?.classification as string) || '';
       const deadlineType = (t.sourceContext?.deadlineType as string) || '';
-      const actionText = (t.action || '').toLowerCase().trim();
-      const combinedCorpus = `${t.title} ${t.action || ''} ${t.description || ''} ${String(t.sourceContext?.subject || '')} ${String(t.sourceContext?.snippet || '')}`.toLowerCase();
+      const rawAction = String(t.action || t.metadata?.action || t.sourceContext?.nextStep || '');
+      const actionText = rawAction.toLowerCase().trim();
+      const combinedCorpus = `${t.title} ${rawAction} ${t.description || ''} ${String(t.sourceContext?.subject || '')} ${String(t.sourceContext?.snippet || '')}`.toLowerCase();
 
       // Program schedules, duration details, or informational flags are not actionable deadlines
       const isProgramSchedule = classification === 'program_schedule' || deadlineType === 'program_duration' || schedule.kind === 'program';
@@ -1194,7 +1200,6 @@ const MainDashboard: React.FC = () => {
 
       // Passive / no-action required indicators
       const isNoAction = 
-        actionText === '' ||
         actionText === 'none' ||
         actionText === 'n/a' ||
         actionText.startsWith('no action') ||
@@ -1203,56 +1208,71 @@ const MainDashboard: React.FC = () => {
         actionText.startsWith('for your information') ||
         actionText.startsWith('fyi');
 
-      // General announcements, program information, participation details, or activities without a specific action deadline
-      const hasSubmissionObligation = /\b(submit|submission|upload|pay|payment|tuition|fee|exam|viva|assessment|test|interview|apply\s+by|register\s+before|last\s+date\s+to\s+apply|due\s+by|deadline)\b/i.test(combinedCorpus);
-      
-      const isGeneralAnnouncementOrProgramInfo = 
-        /\b(program|sdp|fdp|skill\s+development|sessions?\s+from|music\s+club|club\s+audition|auditions|webinar|workshop|conference|seminar|orientation|celebration|announcement|circular|newsletter|bulletin|participation)\b/i.test(combinedCorpus) &&
-        !hasSubmissionObligation;
+      // Comprehensive action / obligation indicator: registration, application, ticket purchase, submission, fee, exam, etc.
+      const hasActionObligation = /\b(register|registration|apply|application|tickets?|purchase|buy|enroll|enrolment|submit|submission|upload|pay|payment|tuition|fee|exam|viva|assessment|test|interview|reserve|slot|due\s+by|deadline|closes?|last\s+date)\b/i.test(combinedCorpus);
 
-      const isNonActionableInfo = isProgramSchedule || isExplicitInformational || isNoAction || isGeneralAnnouncementOrProgramInfo;
-
-      // 3. Genuine Actionable Deadline validation (do not treat program start dates, ranges, or info dates as deadlines)
-      let hasGenuineDeadline = false;
+      // Check whether this item has an explicit deadline or closing date
+      let hasExplicitDeadline = false;
       let targetDeadlineDate: Date | null = null;
       let deadlineDiffDays: number | null = null;
 
-      if (!isNonActionableInfo) {
-        if (schedule.kind === 'window' && schedule.closeDate) {
-          hasGenuineDeadline = true;
-          targetDeadlineDate = schedule.closeDate;
-          deadlineDiffDays = schedule.diffDays;
-        } else if (t.dueDate && t.dueDate.trim()) {
-          const parsed = parseTaskDate(t.dueDate, t.dueTime, currentTime);
-          if (parsed.targetDate && parsed.diffDays !== null) {
-            hasGenuineDeadline = true;
-            targetDeadlineDate = parsed.targetDate;
-            deadlineDiffDays = parsed.diffDays;
-          }
+      if (schedule.kind === 'window' && schedule.closeDate) {
+        hasExplicitDeadline = true;
+        targetDeadlineDate = schedule.closeDate;
+        deadlineDiffDays = schedule.diffDays;
+      } else if (t.dueDate && t.dueDate.trim()) {
+        const parsed = parseTaskDate(t.dueDate, t.dueTime, currentTime);
+        if (parsed.targetDate && parsed.diffDays !== null) {
+          hasExplicitDeadline = true;
+          targetDeadlineDate = parsed.targetDate;
+          deadlineDiffDays = parsed.diffDays;
         }
       }
 
+      // If an item has an explicit deadline and requires action (not explicitly no-action/passive),
+      // it is a genuine actionable task with a deadline!
+      // It must NOT be demoted to Informative just because the email mentions "program", "participation", or "celebration".
+      const isActionableWithDeadline = hasExplicitDeadline && !isNoAction && !isExplicitInformational && (
+        hasActionObligation || classification === 'action_required' || t.type === 'deadline'
+      );
+
+      // If it is a program schedule without an action deadline, or marked informational, or has no action, or is an announcement without a genuine deadline
+      const isNonActionableInfo = !isActionableWithDeadline && (
+        isProgramSchedule ||
+        isExplicitInformational ||
+        isNoAction ||
+        !hasExplicitDeadline ||
+        /\b(sdp|fdp|skill\s+development|sessions?\s+from|music\s+club|club\s+audition|auditions|webinar|workshop|conference|seminar|orientation|announcement|circular|newsletter|bulletin)\b/i.test(combinedCorpus)
+      );
+
       // Rule: Move emails that contain no genuine actionable deadline or scheduled event/meeting into Informative
-      if (!isScheduledEvent && !hasGenuineDeadline) {
+      if ((isNonActionableInfo && !isScheduledEvent) || (!isScheduledEvent && !isActionableWithDeadline)) {
         informationalTasks.push(t);
         return;
       }
 
       // Concluded events or passed deadlines move to Passed
-      if (schedule.isPast || (hasGenuineDeadline && deadlineDiffDays !== null && (deadlineDiffDays < 0 || (deadlineDiffDays === 0 && targetDeadlineDate && targetDeadlineDate.getTime() < currentTime.getTime())))) {
+      if (
+        schedule.isPast ||
+        (isActionableWithDeadline && deadlineDiffDays !== null && (
+          deadlineDiffDays < 0 ||
+          (deadlineDiffDays === 0 && targetDeadlineDate && targetDeadlineDate.getTime() < currentTime.getTime())
+        )) ||
+        t.status === 'OVERDUE' || t.status === 'overdue'
+      ) {
         passedList.push(t);
         return;
       }
 
       // Actionable deadlines due today that have not passed move to Your Day
-      if (hasGenuineDeadline && deadlineDiffDays === 0) {
+      if (isActionableWithDeadline && deadlineDiffDays === 0) {
         yourDayList.push(t);
         return;
       }
 
       // Upcoming: Show ONLY genuine actionable responsibilities with future deadlines,
       // and relevant events or meetings with actual scheduled dates and times.
-      if (isScheduledEvent || (hasGenuineDeadline && (deadlineDiffDays ?? 0) > 0)) {
+      if (isScheduledEvent || (isActionableWithDeadline && (deadlineDiffDays ?? 0) > 0)) {
         upcomingList.push(t);
         return;
       }
@@ -1626,7 +1646,7 @@ const MainDashboard: React.FC = () => {
               Your Responsibilities
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              LifeSynch analyzes complete Gmail messages and Calendar commitments to prioritize what you actually need to do.
+              LifeSynch AI analyzes complete Gmail messages and Calendar commitments to prioritize what you actually need to do.
             </p>
           </div>
 
@@ -2296,6 +2316,13 @@ const MainDashboard: React.FC = () => {
             />
           </div>
         </div>
+      ) : activeTab === 'profile' ? (
+        /* ================= USER PROFILE VIEW ================= */
+        <ProfilePage 
+          user={user}
+          onLogout={logout}
+          onBack={() => setActiveTab('dashboard')}
+        />
       ) : activeTab === 'tasks' ? (
         /* ================= RESPONSIBILITIES DEDICATED VIEW ================= */
         <div className="max-w-5xl mx-auto py-2">
@@ -2491,8 +2518,18 @@ const MainDashboard: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, loginWithGoogle } = useAuth();
   const [isCallbackRoute, setIsCallbackRoute] = useState(false);
+  const [authView, setAuthView] = useState<'landing' | 'login'>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      if (path.includes('/login') || search.includes('login') || search.includes('view=login')) {
+        return 'login';
+      }
+    }
+    return 'landing';
+  });
 
   useEffect(() => {
     const isCallback = window.location.pathname.includes('/auth/callback') ||
@@ -2517,7 +2554,15 @@ const AppContent: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    if (authView === 'login') {
+      return <LoginPage onBackToLanding={() => setAuthView('landing')} />;
+    }
+    return (
+      <LandingPage 
+        onGoToLogin={() => setAuthView('login')}
+        onLoginWithGoogle={loginWithGoogle}
+      />
+    );
   }
 
   return <MainDashboard />;

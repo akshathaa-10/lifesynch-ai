@@ -412,7 +412,7 @@ export class TaskService {
       sourceContext: meta.sourceContext
     });
 
-    let action = meta.action || undefined;
+    let action = meta.action || meta.sourceContext?.nextStep || record.action || undefined;
     let title = record.title || '';
 
     // Requirement 5: Clean up mechanical wording like "Review calendar event 'X'"
@@ -440,7 +440,7 @@ export class TaskService {
       type: record.type,
       priority: record.priority,
       status: lifecycleStatus,
-      category: meta.category || 'general',
+      category: meta.category || record.category || 'general',
       dueDate: record.due_date || undefined,
       dueTime: meta.dueTime || undefined,
       action,
@@ -452,7 +452,7 @@ export class TaskService {
       confidence: record.confidence ?? 1.0,
       confidenceScore: record.confidence ?? 1.0,
       tags: record.tags || [],
-      metadata: { ...meta, action, lifecycleStatus },
+      metadata: { ...meta, action, lifecycleStatus, category: meta.category || record.category || 'general' },
       isArchived: record.is_archived || false,
       createdAt: record.created_at,
       updatedAt: record.updated_at
@@ -543,15 +543,40 @@ export class TaskService {
       return { needsDbUpdate, updateFields };
     }
 
-    const hasSubmission = /\b(submit\s+by|submission\s+deadline|due\s+by|due\s+on|last\s+date|upload\s+before|pay\s+before|apply\s+by|register\s+by|deadline\s*:)\b/i.test(corpus);
+    const hasGenuineActionDeadline = /\b(submit\s+(by|before|on|until)|submission\s+(deadline|date|by|due)|due\s+(by|on|before|date)|last\s+date(\s+of|\s+for|\s+to)?|upload\s+(before|by|on)|pay(\s+fee|\s+tuition)?\s+(before|by|on)|payment\s+deadline|apply\s+(by|before|on|until)|application\s+(deadline|due|closes?|end)|register\s+(by|before|on|until|institution)|registration\s+(deadline|closes?|end|last\s+date)|tickets?(\s+sale|\s+booking)?\s+(by|before|on|ends?|closes?|at)|purchase(\s+tickets?)?\s+(by|before|on|before)|deadline\s*:?|closing\s+date|closes?\s+on|ends?\s+on)\b/i.test(corpus);
+    const hasSubmission = /\b(submit|submission|upload|pay|payment|tuition|fee|exam|viva|assessment|test|interview|apply|application|register|registration|tickets?|purchase|buy|enroll|enrolment|due\s+by|deadline|closing\s+date|last\s+date)\b/i.test(corpus);
     const isProgramSchedule = isProgramScheduleOrEventDateRange(corpus) || /\b(skill\s+development\s+program|sdp|fdp|runs?\s+from|running\s+from)\b/i.test(corpus);
     const isAppWindow = /\b(application\s+window|applications?\s+are\s+open|open\s+from\s+[a-z0-9]+\s+to|scholarship\s+application\s+window)\b/i.test(corpus) ||
       t.sourceContext?.classification === 'opportunity_window' ||
       t.sourceContext?.deadlineType === 'application_window';
-    const isEventOrMeeting = t.source === 'calendar' || t.type === 'appointment' ||
+    const isEventOrMeeting = (t.source === 'calendar' || t.type === 'appointment' ||
       /\b(meeting|interview|session|talk|sync|discussion|ceremony|lecture|viva|review|webinar)\b/i.test(corpus) ||
       t.sourceContext?.classification === 'event_meeting' ||
-      t.sourceContext?.deadlineType === 'event_time';
+      t.sourceContext?.deadlineType === 'event_time') &&
+      !hasGenuineActionDeadline;
+
+    // Ensure category is accurately assigned
+    if (!t.category || t.category === 'general') {
+      let targetCat: 'work' | 'academic' | 'personal' | 'finance' | 'meeting' | null = null;
+      if (/\b(intern|internship|hiring|job|unstop|placement|recruitment|core team)\b/i.test(corpus)) {
+        targetCat = 'work';
+      } else if (/\b(kashi|kts|nptel|exam|gate|test|course|grade|iit|university|college|academic|scholarship|hall ticket|viva|hackathon|sih)\b/i.test(corpus)) {
+        targetCat = 'academic';
+      } else if (/\b(sitaara|diwali|celebration|music|festival|party|volleyball|tournament|exhibition)\b/i.test(corpus)) {
+        targetCat = 'personal';
+      } else if (/\b(fee|tuition|payment|dues|invoice|refund)\b/i.test(corpus)) {
+        targetCat = 'finance';
+      } else if (isEventOrMeeting) {
+        targetCat = 'meeting';
+      }
+      if (targetCat && targetCat !== t.category) {
+        t.category = targetCat;
+        if (!t.metadata) t.metadata = {};
+        t.metadata.category = targetCat;
+        updateFields.metadata = t.metadata;
+        needsDbUpdate = true;
+      }
+    }
 
     // Guard: Cleanse invalid windowStartDate / windowEndDate that were improperly set to email receivedAt or messageId dates
     const receivedAt = (t.sourceContext?.receivedAt as string) || '';
@@ -660,13 +685,25 @@ export class TaskService {
     } else {
       // 6. Actionable deadline
       if (!t.sourceContext) t.sourceContext = {};
-      if (!t.sourceContext.classification) {
-        t.sourceContext.classification = 'action_required';
-        t.sourceContext.deadlineType = 'strict_deadline';
+      if (t.dueDate && (hasGenuineActionDeadline || hasSubmission)) {
+        if (t.sourceContext.classification !== 'action_required' || t.sourceContext.deadlineType !== 'strict_deadline') {
+          t.sourceContext.classification = 'action_required';
+          t.sourceContext.deadlineType = 'strict_deadline';
+          t.type = 'deadline';
+          if (!t.metadata) t.metadata = {};
+          t.metadata.sourceContext = t.sourceContext;
+          t.metadata.classification = 'action_required';
+          t.metadata.deadlineType = 'strict_deadline';
+          updateFields.metadata = t.metadata;
+          needsDbUpdate = true;
+        }
+      } else if (!t.sourceContext.classification) {
+        t.sourceContext.classification = 'informational';
+        t.sourceContext.deadlineType = 'none';
         if (!t.metadata) t.metadata = {};
         t.metadata.sourceContext = t.sourceContext;
-        t.metadata.classification = 'action_required';
-        t.metadata.deadlineType = 'strict_deadline';
+        t.metadata.classification = 'informational';
+        t.metadata.deadlineType = 'none';
         updateFields.metadata = t.metadata;
         needsDbUpdate = true;
       }
@@ -681,6 +718,8 @@ export class TaskService {
     });
     if (dynamicStatus !== t.status) {
       t.status = dynamicStatus;
+      const dbStatus = dynamicStatus === 'COMPLETED' ? 'completed' : dynamicStatus === 'CANCELLED' ? 'dismissed' : 'pending';
+      updateFields.status = dbStatus;
       if (!t.metadata) t.metadata = {};
       t.metadata.lifecycleStatus = dynamicStatus;
       updateFields.metadata = t.metadata;
