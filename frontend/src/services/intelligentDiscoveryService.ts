@@ -208,13 +208,37 @@ function formatDiscoveryTitle(
 }
 
 /**
+ * Helper to match an email or calendar event to a responsibility in tasks.
+ */
+function findTaskForEmailOrEvent(
+  sourceId: string | undefined,
+  titleOrSubject: string | undefined,
+  tasks: Responsibility[] = []
+): Responsibility | undefined {
+  if (!tasks || tasks.length === 0) return undefined;
+  return tasks.find(t => {
+    if (sourceId && (t.sourceId === sourceId || (t.sourceContext as any)?.messageId === sourceId || (t.sourceContext as any)?.calendarEventId === sourceId)) {
+      return true;
+    }
+    if (titleOrSubject && t.title) {
+      const cleanSub = cleanTitle(titleOrSubject).toLowerCase();
+      const cleanT = cleanTitle(t.title).toLowerCase();
+      if (cleanSub && cleanT && (cleanSub.includes(cleanT) || cleanT.includes(cleanSub))) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
+/**
  * Generates an intelligent, deduplicated set of discoveries from the user's
  * complete Gmail messages, Calendar events, and Responsibilities.
  */
 export function generateIntelligentDiscoveries(
   emails: EmailRecord[],
   calendarEvents: CalendarEventRecord[],
-  tasks: Responsibility[]
+  tasks: Responsibility[] = []
 ): IntelligentDiscovery[] {
   const discoveries: IntelligentDiscovery[] = [];
   const processedEmailIds = new Set<string>();
@@ -253,6 +277,7 @@ export function generateIntelligentDiscoveries(
       processedEmailIds.add(matchingEmail.id);
       const isPast = new Date(ev.startTime).getTime() < Date.now();
       if (!isPast) {
+        const matchingTask = findTaskForEmailOrEvent(ev.id, ev.summary, tasks) || findTaskForEmailOrEvent(matchingEmail.id, matchingEmail.subject, tasks);
         discoveries.push({
           id: `disc_cross_${ev.id}`,
           title: `${cleanTitle(ev.summary)}: Scheduled Commitment & Briefing`,
@@ -269,7 +294,8 @@ export function generateIntelligentDiscoveries(
             { id: matchingEmail.id, type: 'gmail', title: matchingEmail.subject || 'Briefing Email', date: matchingEmail.receivedAt }
           ],
           rawCalendarEvent: ev,
-          rawEmail: matchingEmail
+          rawEmail: matchingEmail,
+          rawResponsibility: matchingTask
         });
       }
     }
@@ -298,6 +324,10 @@ export function generateIntelligentDiscoveries(
       const primary = cluster[0];
       const title = formatDiscoveryTitle(primary.subject || '', primary.snippet || '', 'connected_thread');
       const explanation = extractWhyItMatters(primary.subject || '', primary.snippet || '', primary.bodyText || '', 'connected_thread');
+      const matchingTask = cluster.reduce<Responsibility | undefined>(
+        (found, e) => found || findTaskForEmailOrEvent(e.id, e.subject, tasks),
+        undefined
+      );
 
       discoveries.push({
         id: `disc_cluster_${topicKey}`,
@@ -316,7 +346,8 @@ export function generateIntelligentDiscoveries(
           title: cleanTitle(e.subject || 'Update'),
           date: e.receivedAt
         })),
-        rawEmail: primary
+        rawEmail: primary,
+        rawResponsibility: matchingTask
       });
     }
   }
@@ -348,6 +379,7 @@ export function generateIntelligentDiscoveries(
       processedEmailIds.add(em.id);
       const title = formatDiscoveryTitle(sub, body, 'update');
       const explanation = extractWhyItMatters(sub, em.snippet || '', body, 'update');
+      const matchingTask = findTaskForEmailOrEvent(em.id, sub, tasks);
 
       discoveries.push({
         id: `disc_update_${em.id}`,
@@ -359,7 +391,8 @@ export function generateIntelligentDiscoveries(
         sourceType: 'gmail',
         sourceId: em.id,
         primaryDate: em.receivedAt,
-        rawEmail: em
+        rawEmail: em,
+        rawResponsibility: matchingTask
       });
     }
 
@@ -396,6 +429,7 @@ export function generateIntelligentDiscoveries(
       processedEmailIds.add(em.id);
       const title = formatDiscoveryTitle(sub, body, 'opportunity');
       const explanation = extractWhyItMatters(sub, em.snippet || '', body, 'opportunity');
+      const matchingTask = findTaskForEmailOrEvent(em.id, sub, tasks);
 
       discoveries.push({
         id: `disc_opp_${em.id}`,
@@ -407,7 +441,8 @@ export function generateIntelligentDiscoveries(
         sourceType: 'gmail',
         sourceId: em.id,
         primaryDate: em.receivedAt,
-        rawEmail: em
+        rawEmail: em,
+        rawResponsibility: matchingTask
       });
     }
   }
@@ -437,6 +472,7 @@ export function generateIntelligentDiscoveries(
       processedEmailIds.add(em.id);
       const title = formatDiscoveryTitle(sub, body, 'announcement');
       const explanation = extractWhyItMatters(sub, em.snippet || '', body, 'announcement');
+      const matchingTask = findTaskForEmailOrEvent(em.id, sub, tasks);
 
       discoveries.push({
         id: `disc_ann_${em.id}`,
@@ -448,7 +484,8 @@ export function generateIntelligentDiscoveries(
         sourceType: 'gmail',
         sourceId: em.id,
         primaryDate: em.receivedAt,
-        rawEmail: em
+        rawEmail: em,
+        rawResponsibility: matchingTask
       });
     }
   }

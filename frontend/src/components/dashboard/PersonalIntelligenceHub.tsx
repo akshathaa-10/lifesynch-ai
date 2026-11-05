@@ -38,6 +38,7 @@ import {
   generateIntelligentDiscoveries, 
   IntelligentDiscovery 
 } from '../../services/intelligentDiscoveryService';
+import { WorthKnowingDetailModal } from './WorthKnowingDetailModal';
 
 interface PersonalIntelligenceHubProps {
   user: User | null;
@@ -81,6 +82,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
   // Selected email or event preview modal
   const [previewEmail, setPreviewEmail] = useState<EmailRecord | null>(null);
   const [previewEvent, setPreviewEvent] = useState<CalendarEventRecord | null>(null);
+  const [selectedDiscovery, setSelectedDiscovery] = useState<IntelligentDiscovery | null>(null);
 
   // Dynamic overrides version trigger for reactive local updates
   const [overrideVersion, setOverrideVersion] = useState<number>(0);
@@ -121,25 +123,9 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
     setOverrideVersion(v => v + 1);
   };
 
-  // Open intelligent discovery source
+  // Open intelligent discovery source as structured Worth Knowing detail
   const handleDiscoveryClick = (discovery: IntelligentDiscovery) => {
-    if (discovery.rawResponsibility) {
-      onSelectResponsibility(discovery.rawResponsibility);
-    } else if (discovery.rawCalendarEvent) {
-      if (discovery.rawCalendarEvent.htmlLink) {
-        window.open(discovery.rawCalendarEvent.htmlLink, '_blank', 'noopener,noreferrer');
-      } else if (onSelectCalendarEvent) {
-        onSelectCalendarEvent(discovery.rawCalendarEvent.id);
-      } else {
-        setPreviewEvent(discovery.rawCalendarEvent);
-      }
-    } else if (discovery.rawEmail) {
-      setPreviewEmail(discovery.rawEmail);
-    } else if (discovery.sourceType === 'gmail' && discovery.sourceId) {
-      onSelectEmail(discovery.sourceId);
-    } else if (discovery.sourceType === 'calendar' && onSelectCalendarEvent) {
-      onSelectCalendarEvent(discovery.sourceId);
-    }
+    setSelectedDiscovery(discovery);
   };
 
   // Open item source as full Responsibility Details
@@ -1064,7 +1050,7 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
 
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 group-hover:text-[#34515e] font-semibold transition-colors">
                     <span className="text-xs text-slate-400 group-hover:text-[#34515e]">
-                      Open source
+                      View details
                     </span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </div>
@@ -1131,6 +1117,25 @@ export const PersonalIntelligenceHub: React.FC<PersonalIntelligenceHubProps> = (
           </button>
         </form>
       </section>
+
+      {/* ================= WORTH KNOWING DETAIL MODAL ================= */}
+      {selectedDiscovery && (
+        <WorthKnowingDetailModal
+          discovery={selectedDiscovery}
+          tasks={tasks}
+          onClose={() => setSelectedDiscovery(null)}
+          onOpenEmail={(emailId: string) => {
+            setSelectedDiscovery(null);
+            onSelectEmail(emailId);
+          }}
+          onOpenCalendar={(eventId: string) => {
+            setSelectedDiscovery(null);
+            if (onSelectCalendarEvent) {
+              onSelectCalendarEvent(eventId);
+            }
+          }}
+        />
+      )}
 
       {/* ================= PREVIEW MODAL: EMAIL ================= */}
       {previewEmail && (
