@@ -1,0 +1,24 @@
+flowchart TD
+    UserQuery["User submits question in chat<br/>(e.g., 'What is due today?', 'Why is project high priority?')"] --> Back["AssistantController: POST /api/v1/assistant/chat"]
+    
+    Back --> IntentFilter["AssistantService.filterDataForIntent()<br/>Analyze Intent & Temporal Parameters<br/>(currentIso, todayStr, tomorrowStr, thisWeekStartStr)"]
+    
+    IntentFilter --> DataFetch["Query User-Isolated Data from Supabase:<br/>1. Stored Emails (emails table)<br/>2. Calendar Events (calendar_events table)<br/>3. Responsibilities (responsibilities table)"]
+    
+    DataFetch --> BuildPrompt["Inject Grounded User Context into System Prompt<br/>(Strict Anti-Hallucination Constraints: Only answer from user data)"]
+    
+    BuildPrompt --> CallGemini["Call Google Gemini API via AssistantService.callLLMForChat()"]
+    
+    CallGemini --> QuotaCheck{"Gemini API Call Status"}
+    
+    QuotaCheck -->|Success (200 OK)| StreamAnswer["Synthesize personalized answer with citations"]
+    QuotaCheck -->|HTTP 429 Quota Exceeded / Error| Fallback["AUTOMATIC FALLBACK:<br/>Execute Grounded Deterministic Analysis Engine"]
+    
+    Fallback --> DeterministicEngine["Deterministic Rule-Based Formatter:<br/>- Match queries for 'due today', 'priority rationale', 'overdue'<br/>- Extract exact matching entities from user's DB records<br/>- Attach exact Source citations [Source: Gmail/Calendar | id:UUID]"]
+    
+    DeterministicEngine --> FormatOutput["Generate clean, fully grounded response"]
+    StreamAnswer --> FormatOutput
+    
+    FormatOutput --> ReturnFront["Return JSON: { answer, intent, sources: [...] }"]
+    ReturnFront --> RenderUI["Frontend Assistant Chat Component renders answer<br/>with clickable source badges and task deep-links"]
+

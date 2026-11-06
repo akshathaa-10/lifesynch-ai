@@ -1,0 +1,26 @@
+flowchart TD
+    Start(["Start Gmail Sync (User ID)"]) --> CheckAuth["Retrieve Tokens from 'connected_accounts'"]
+    CheckAuth --> ExpiredCheck{"Is Access Token Expired?"}
+    
+    ExpiredCheck -->|Yes| RefreshToken["Call Google OAuth with refresh_token<br/>Update DB with new access_token"]
+    ExpiredCheck -->|No| InitClient["Initialize google.gmail({ version: 'v1' })"]
+    RefreshToken --> InitClient
+    
+    InitClient --> FetchCursor["Read prior syncToken from 'sync_state' table"]
+    FetchCursor --> ListMessages["Call gmail.users.messages.list<br/>maxResults: 50, q: 'in:inbox'"]
+    
+    ListMessages --> PaginationCheck{"Prior syncToken exists or initial sync?"}
+    PaginationCheck -->|Yes| FetchOlder["Fetch older page via pageToken<br/>Append up to 100 message summaries"]
+    PaginationCheck -->|No| DeduplicateIds["Collect all message IDs in memory"]
+    FetchOlder --> DeduplicateIds
+    
+    DeduplicateIds --> QueryExisting["Query Supabase 'emails' table for existing message_ids"]
+    QueryExisting --> FilterNew["Filter out already-stored messages<br/>(Avoid quota exhaustion)"]
+    
+    FilterNew --> BatchFetch["Fetch full details in batches of 10<br/>gmail.users.messages.get(id, format: 'full')"]
+    BatchFetch --> ParseMIME["Parse Headers (Subject, From, To, Date)<br/>Extract plain text or clean HTML body<br/>Detect attachments"]
+    
+    ParseMIME --> SaveDB["Upsert into Supabase 'emails' table<br/>(user_id, message_id, subject, snippet, body_text)"]
+    SaveDB --> UpdateSyncState["Update 'sync_state' table<br/>(status: 'success', lastSyncedAt, nextSyncToken)"]
+    UpdateSyncState --> End(["Gmail Sync Complete"])
+

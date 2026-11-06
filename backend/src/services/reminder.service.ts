@@ -56,8 +56,13 @@ export class ReminderService {
         seconds = 0;
       } else if (dueDate.includes('T')) {
         const parsedIso = new Date(dueDate);
-        if (!isNaN(parsedIso.getTime()) && (parsedIso.getHours() !== 0 || parsedIso.getMinutes() !== 0)) {
-          return parsedIso.getTime();
+        if (!isNaN(parsedIso.getTime())) {
+          // If the timestamp is UTC midnight (00:00:00.000Z) or local midnight, it represents an all-day date without clock time
+          const isUtcMidnight = parsedIso.getUTCHours() === 0 && parsedIso.getUTCMinutes() === 0 && parsedIso.getUTCSeconds() === 0;
+          const isLocalMidnight = parsedIso.getHours() === 0 && parsedIso.getMinutes() === 0 && parsedIso.getSeconds() === 0;
+          if (!isUtcMidnight && !isLocalMidnight) {
+            return parsedIso.getTime();
+          }
         }
       }
 
@@ -190,7 +195,7 @@ export class ReminderService {
    * Cleans up expired and overdue notifications from persistent storage
    * so they never linger as active notifications.
    */
-  public async cleanupExpiredNotifications(userId: string): Promise<void> {
+  public async cleanupExpiredNotifications(userId: string, now?: Date): Promise<void> {
     if (isSupabaseConfigured()) {
       const supabase = getSupabaseAdminClient();
       try {
@@ -206,7 +211,7 @@ export class ReminderService {
     }
 
     // Clean in-memory cache
-    const nowMs = Date.now();
+    const nowMs = (now ? new Date(now) : new Date()).getTime();
     for (const [id, rem] of this.inMemoryReminders.entries()) {
       if (rem.userId === userId) {
         if (rem.title.startsWith('Overdue:')) {
@@ -228,12 +233,13 @@ export class ReminderService {
   public async generateRemindersForUser(userId: string, now?: Date): Promise<ReminderSyncSummary> {
     logger.info(`Generating smart deadline reminders for user: ${userId}`);
 
+    const refNow = now ? new Date(now) : new Date();
+
     // Clean up any previously stored overdue notifications
-    await this.cleanupExpiredNotifications(userId);
+    await this.cleanupExpiredNotifications(userId, refNow);
 
     const activeTasks = await taskService.getTasks(userId);
-    const existingReminders = await this.getRemindersForUser(userId);
-    const refNow = now ? new Date(now) : new Date();
+    const existingReminders = await this.getRemindersForUser(userId, refNow);
 
     let generated = 0;
     let skipped = 0;
@@ -335,7 +341,7 @@ export class ReminderService {
       generated++;
     }
 
-    const totalReminders = (await this.getRemindersForUser(userId)).length;
+    const totalReminders = (await this.getRemindersForUser(userId, refNow)).length;
     logger.info(`Smart reminder generation for user ${userId} complete: generated ${generated}, skipped ${skipped}, total ${totalReminders}`);
 
     return {
@@ -464,8 +470,8 @@ export class ReminderService {
    * 2. Any overdue notifications
    * 3. Reminders for completed or cancelled tasks
    */
-  public async getRemindersForUser(userId: string): Promise<ReminderNotification[]> {
-    const nowMs = Date.now();
+  public async getRemindersForUser(userId: string, now?: Date): Promise<ReminderNotification[]> {
+    const nowMs = (now ? new Date(now) : new Date()).getTime();
 
     if (isSupabaseConfigured()) {
       const supabase = getSupabaseAdminClient();
@@ -482,13 +488,23 @@ export class ReminderService {
       }
 
       // Query tasks to check status and actual deadlines
-      const { data: allTasks } = await supabase
+      const { data: allTasks, error: tasksError } = await supabase
         .from('responsibilities')
-        .select('id, title, status, is_archived, due_date, due_time')
+        .select('id, title, status, is_archived, due_date, metadata')
         .eq('user_id', userId);
 
-      const tasksMap = new Map((allTasks || []).map((t: any) => [t.id, t]));
-      const taskTitlesMap = new Map((allTasks || []).map((t: any) => [t.title.toLowerCase().trim(), t]));
+      if (tasksError) {
+        logger.warn(`Failed to query tasks for reminder status check for user ${userId}:`, tasksError.message);
+      }
+
+      const tasksMap = new Map((allTasks || []).map((t: any) => [t.id, {
+        ...t,
+        due_time: t.metadata?.dueTime
+      }]));
+      const taskTitlesMap = new Map((allTasks || []).map((t: any) => [t.title.toLowerCase().trim(), {
+        ...t,
+        due_time: t.metadata?.dueTime
+      }]));
 
       const inactiveTitles = new Set(
         (allTasks || [])

@@ -11,7 +11,19 @@ async function runReminderTests() {
   console.log('  LIFESYNCH AI — PHASE 6.1: BASIC REMINDERS TEST     ');
   console.log('=====================================================');
 
-  const anchorNow = new Date('2026-09-26T12:00:00.000Z');
+  // Dynamically generated anchor dates relative to current time for deterministic tests
+  const now = new Date();
+  const anchorNow = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const todayDateStr = `${anchorNow.getFullYear()}-${pad(anchorNow.getMonth() + 1)}-${pad(anchorNow.getDate())}`;
+
+  const tomorrowObj = new Date(anchorNow);
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrowDateStr = `${tomorrowObj.getFullYear()}-${pad(tomorrowObj.getMonth() + 1)}-${pad(tomorrowObj.getDate())}`;
+
+  const yesterdayObj = new Date(anchorNow);
+  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+  const yesterdayDateStr = `${yesterdayObj.getFullYear()}-${pad(yesterdayObj.getMonth() + 1)}-${pad(yesterdayObj.getDate())}`;
 
   // ----------------------------------------------------------------
   // Test 1: Date & Time Formatting Verification
@@ -28,12 +40,12 @@ async function runReminderTests() {
   // ----------------------------------------------------------------
   // Test 2: Message Template & Examples Verification
   // ----------------------------------------------------------------
-  console.log('\n[TEST 2] Reminder Message Format (Due Today & Due Tomorrow)');
+  console.log('\n[TEST 2] Reminder Message Format (Due Today, Due Tomorrow & Past Exclusion)');
   
   // Example 1: Due Today at 5:00 PM
   const msgToday = reminderService.formatReminderMessage(
     'Project Report',
-    '2026-09-26T17:00:00.000Z',
+    `${todayDateStr}T17:00:00.000Z`,
     '17:00',
     anchorNow
   );
@@ -46,7 +58,7 @@ async function runReminderTests() {
   // Example 2: Due Tomorrow (without clock time)
   const msgTomorrow = reminderService.formatReminderMessage(
     'Project Report',
-    '2026-09-27T00:00:00.000Z',
+    `${tomorrowDateStr}T00:00:00.000Z`,
     null,
     anchorNow
   );
@@ -59,7 +71,16 @@ async function runReminderTests() {
   // Example 3: No deadline
   const msgNoDeadline = reminderService.formatReminderMessage('Task without deadline', null, null, anchorNow);
   assert.strictEqual(msgNoDeadline, null, 'Items without deadline must NOT generate reminder messages');
-  console.log('✔ Reminder messages strictly match expected templates for today and tomorrow');
+
+  // Example 4: Past deadline (Must return null)
+  const msgPast = reminderService.formatReminderMessage(
+    'Past Assignment',
+    `${yesterdayDateStr}T17:00:00.000Z`,
+    '17:00',
+    anchorNow
+  );
+  assert.strictEqual(msgPast, null, 'Past deadlines must NOT generate reminder messages');
+  console.log('✔ Reminder messages strictly match expected templates for today and tomorrow and exclude past deadlines');
 
   // ----------------------------------------------------------------
   // Test 3: Real Database Integration (Creation, Reference, Date/Time)
@@ -75,7 +96,7 @@ async function runReminderTests() {
     title: 'Project Report',
     description: 'Final submission for semester project',
     action: 'Upload report to classroom portal',
-    dueDate: '2026-09-26T17:00:00.000Z',
+    dueDate: `${todayDateStr}T17:00:00.000Z`,
     dueTime: '17:00',
     priority: 'high',
     category: 'academic',
@@ -88,7 +109,7 @@ async function runReminderTests() {
     title: 'SIH Final Pitch Deck',
     description: 'Pitch deck presentation for hackathon',
     action: 'Finalize slides with team',
-    dueDate: '2026-09-27T00:00:00.000Z',
+    dueDate: `${tomorrowDateStr}T00:00:00.000Z`,
     priority: 'high',
     category: 'academic',
     source: 'calendar',
@@ -100,7 +121,7 @@ async function runReminderTests() {
   assert.strictEqual(syncSummary1.generated, 2, 'Should generate exactly 2 reminders for the 2 active tasks with deadlines');
 
   // Fetch reminders and verify correctness
-  const userReminders = await reminderService.getRemindersForUser(testUser.id);
+  const userReminders = await reminderService.getRemindersForUser(testUser.id, anchorNow);
   assert.strictEqual(userReminders.length, 2, 'User must have exactly 2 stored reminders');
 
   const remToday = userReminders.find(r => r.responsibilityId === taskToday.id || r.title.includes('Project Report'));
@@ -122,7 +143,7 @@ async function runReminderTests() {
   assert.strictEqual(syncSummary2.generated, 0, 'Second run must generate 0 new reminders');
   assert(syncSummary2.skipped >= 2, 'Second run must skip existing reminders');
 
-  const remindersAfterRepeat = await reminderService.getRemindersForUser(testUser.id);
+  const remindersAfterRepeat = await reminderService.getRemindersForUser(testUser.id, anchorNow);
   assert.strictEqual(remindersAfterRepeat.length, 2, 'Total reminder count must remain unchanged after repeated run');
   console.log('✔ Repeated sync does not create duplicate reminders');
 
@@ -136,7 +157,7 @@ async function runReminderTests() {
     title: 'Completed Lab Assessment',
     description: 'Lab evaluation submitted and graded',
     action: 'Already submitted',
-    dueDate: '2026-09-26T17:00:00.000Z',
+    dueDate: `${todayDateStr}T17:00:00.000Z`,
     dueTime: '17:00',
     priority: 'medium',
     category: 'academic',
@@ -154,7 +175,7 @@ async function runReminderTests() {
     title: 'Cancelled Guest Lecture Session',
     description: 'Meeting cancelled by guest lecturer',
     action: 'No action required',
-    dueDate: '2026-09-26T17:00:00.000Z',
+    dueDate: `${todayDateStr}T17:00:00.000Z`,
     dueTime: '17:00',
     priority: 'low',
     category: 'general',
@@ -178,14 +199,28 @@ async function runReminderTests() {
     sourceId: 'msg_optional_read'
   });
 
+  // 5d: Past deadline task (expired)
+  const pastDeadlineTask = await taskService.createTask(testUser.id, {
+    title: 'Past Assignment Submission',
+    description: 'Expired obligation',
+    action: 'Submit assignment',
+    dueDate: `${yesterdayDateStr}T17:00:00.000Z`,
+    dueTime: '17:00',
+    priority: 'high',
+    category: 'academic',
+    source: 'gmail',
+    sourceId: 'msg_past_assignment'
+  });
+
   // Run reminder generation
   const syncSummary3 = await reminderService.generateRemindersForUser(testUser.id, anchorNow);
-  assert.strictEqual(syncSummary3.generated, 0, 'No reminders should be generated for completed, cancelled, or no-deadline tasks');
+  assert.strictEqual(syncSummary3.generated, 0, 'No reminders should be generated for completed, cancelled, no-deadline, or past tasks');
 
-  const finalReminders = await reminderService.getRemindersForUser(testUser.id);
+  const finalReminders = await reminderService.getRemindersForUser(testUser.id, anchorNow);
   assert(!finalReminders.some(r => r.title.includes('Completed Lab')), 'Completed items must NOT generate reminders');
   assert(!finalReminders.some(r => r.title.includes('Cancelled Guest')), 'Cancelled items must NOT generate reminders');
   assert(!finalReminders.some(r => r.title.includes('Optional Reading')), 'No-deadline items must NOT generate reminders');
+  assert(!finalReminders.some(r => r.title.includes('Past Assignment')), 'Past deadline items must NOT generate reminders');
   console.log('✔ Completed responsibilities, cancelled responsibilities, and tasks without deadlines are strictly excluded');
 
   // ----------------------------------------------------------------
@@ -202,7 +237,7 @@ async function runReminderTests() {
     title: 'Isolated User Confidential Task',
     description: 'Private task for User B',
     action: 'Keep isolated',
-    dueDate: '2026-09-26T18:00:00.000Z',
+    dueDate: `${todayDateStr}T18:00:00.000Z`,
     dueTime: '18:00',
     priority: 'high',
     category: 'personal',
@@ -211,8 +246,8 @@ async function runReminderTests() {
 
   await reminderService.generateRemindersForUser(otherUser.id, anchorNow);
 
-  const userAReminders = await reminderService.getRemindersForUser(testUser.id);
-  const userBReminders = await reminderService.getRemindersForUser(otherUser.id);
+  const userAReminders = await reminderService.getRemindersForUser(testUser.id, anchorNow);
+  const userBReminders = await reminderService.getRemindersForUser(otherUser.id, anchorNow);
 
   assert.strictEqual(userBReminders.length, 1, 'User B must have exactly 1 reminder');
   assert.strictEqual(userAReminders.length, 2, 'User A must still have exactly 2 reminders');

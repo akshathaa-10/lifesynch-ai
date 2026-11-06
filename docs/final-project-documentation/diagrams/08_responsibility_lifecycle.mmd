@@ -1,0 +1,26 @@
+stateDiagram-v2
+    [*] --> Ingested: Extracted by AI from Gmail / Calendar
+    
+    state Ingested {
+        [*] --> UPCOMING: Deadline is in the future (> today)
+        [*] --> DUE_TODAY: Deadline is today
+    }
+
+    UPCOMING --> DUE_TODAY: Wall-clock advances to deadline date
+    
+    DUE_TODAY --> OVERDUE: Deadline timestamp passes without completion
+    UPCOMING --> OVERDUE: Passed deadline without completion
+    
+    UPCOMING --> COMPLETED: User marks responsibility completed
+    DUE_TODAY --> COMPLETED: User marks responsibility completed
+    OVERDUE --> COMPLETED: User marks responsibility completed
+    
+    UPCOMING --> CANCELLED: User dismisses task OR event cancelled in Calendar
+    DUE_TODAY --> CANCELLED: User dismisses task OR event cancelled in Calendar
+    OVERDUE --> CANCELLED: User dismisses task
+    
+    state InactiveState {
+        COMPLETED --> [*]: Excluded from active reminders and focus widgets
+        CANCELLED --> [*]: Archived in DB, excluded from reminders and views
+    }
+

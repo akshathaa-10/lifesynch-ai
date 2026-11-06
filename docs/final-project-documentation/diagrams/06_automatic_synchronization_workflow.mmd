@@ -1,0 +1,34 @@
+flowchart TD
+    Timer["AutoSyncService 30-Second Interval Timer"] --> CheckRunning{"Is global sync cycle already running?"}
+    CheckRunning -->|Yes| SkipTick["Skip this tick (Prevent overlapping global cycles)"]
+    CheckRunning -->|No| FetchUsers["Fetch all connected Google accounts from DB"]
+    
+    FetchUsers --> LoopUsers["Iterate through unique user IDs"]
+    LoopUsers --> CheckActiveUser{"Is user currently in activeSyncUsers Set?"}
+    
+    CheckActiveUser -->|Yes| SkipUser["Skip user (Active sync already in-flight)"]
+    CheckActiveUser -->|No| LockUser["Add userId to activeSyncUsers Set"]
+    
+    LockUser --> ConcurrentSync["Execute Promise.allSettled:"]
+    subgraph ParallelFeeds ["Concurrent Ingestion"]
+        ConcurrentSync --> SyncGmail["gmailService.syncUserEmails(userId)"]
+        ConcurrentSync --> SyncCalendar["calendarService.syncUserCalendar(userId)"]
+    end
+    
+    SyncGmail --> Settle["Wait for both ingestion feeds to settle"]
+    SyncCalendar --> Settle
+    
+    Settle --> AIExtract["Run AI Responsibility Generation<br/>responsibilityGenerationService.generateResponsibilities(userId)"]
+    
+    AIExtract --> QuotaCheck{"Gemini API Call Status"}
+    QuotaCheck -->|HTTP 429 / Quota Limit| CatchNotice["Log notice: Quota limit encountered<br/>Keep existing stored responsibilities intact"]
+    QuotaCheck -->|Success (200 OK)| ParseExtract["Extract new actionable responsibilities<br/>Insert into Supabase 'responsibilities'"]
+    
+    CatchNotice --> GenReminders["Generate Smart Reminders<br/>reminderService.generateRemindersForUser(userId)"]
+    ParseExtract --> GenReminders
+    
+    GenReminders --> DeduplicateReminders["Clean expired overdue notifications<br/>Deduplicate & create active reminders in 'notifications'"]
+    
+    DeduplicateReminders --> UnlockUser["Remove userId from activeSyncUsers Set"]
+    UnlockUser --> NextUser["Proceed to next user"]
+

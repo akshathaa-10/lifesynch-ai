@@ -1,0 +1,102 @@
+erDiagram
+    users {
+        uuid id PK "Primary Key (gen_random_uuid())"
+        string email UK "Unique email address"
+        string name "User full name"
+        string picture "Profile avatar URL"
+        timestamp created_at "Account creation timestamp"
+        timestamp updated_at "Account update timestamp"
+    }
+
+    connected_accounts {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string provider "Account provider ('google')"
+        text access_token "OAuth Access Token (encrypted/sanitized)"
+        text refresh_token "OAuth Refresh Token (encrypted/sanitized)"
+        timestamp token_expiry "Access token expiration timestamp"
+        string[] scopes "Granted OAuth scopes"
+        timestamp created_at "Created timestamp"
+        timestamp updated_at "Updated timestamp"
+    }
+
+    emails {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string message_id "Google Gmail message ID"
+        string thread_id "Google Gmail thread ID"
+        string sender "Sender email header"
+        string recipient "Recipient email header"
+        string subject "Email subject line"
+        text snippet "Short preview snippet"
+        text body_text "Parsed plain text or extracted HTML"
+        text body_html "Raw HTML body"
+        timestamp received_at "Original email received timestamp"
+        string[] labels "Gmail label IDs"
+        timestamp created_at "Ingestion timestamp"
+    }
+
+    calendar_events {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string event_id "Google Calendar event ID"
+        string calendar_id "Calendar identifier ('primary')"
+        string summary "Event title / summary"
+        text description "Event description"
+        timestamp start_time "Event start moment (ISO)"
+        timestamp end_time "Event end moment (ISO)"
+        string location "Event physical or virtual location"
+        string status "Event status ('confirmed', 'cancelled')"
+        string html_link "Direct Google Calendar web link"
+        jsonb attendees "List of attendee objects"
+        timestamp created_at "Ingestion timestamp"
+        timestamp updated_at "Update timestamp"
+    }
+
+    responsibilities {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string title "Responsibility action title"
+        text description "Detailed description / action step"
+        string type "Type: task, deadline, appointment, reminder, other"
+        string priority "Priority: urgent, high, medium, low"
+        string status "Lifecycle: pending, in_progress, completed, dismissed"
+        timestamp due_date "Deadline date (ISO timestamp)"
+        string source "Origin: 'gmail', 'calendar', 'both', 'manual'"
+        string source_id "ID of originating email or event"
+        float confidence "AI extraction confidence score (0.0 - 1.0)"
+        string[] tags "Categorical tags"
+        jsonb metadata "Contains dueTime, action, category, lifecycleStatus"
+        boolean is_archived "Whether task is archived/cancelled"
+        timestamp created_at "Created timestamp"
+        timestamp updated_at "Updated timestamp"
+    }
+
+    notifications {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string title "Notification header"
+        text message "Human-readable reminder body"
+        string type "Type: responsibility, alert, warning, info"
+        boolean is_read "Read state toggle"
+        timestamp created_at "Creation timestamp"
+    }
+
+    sync_state {
+        uuid id PK "Primary Key"
+        uuid user_id FK "References users(id) ON DELETE CASCADE"
+        string provider "Sync provider ('gmail', 'google_calendar')"
+        string status "State: 'idle', 'running', 'success', 'failed'"
+        string sync_token "Pagination / history token cursor"
+        timestamp last_synced_at "Timestamp of last successful sync"
+        text error_message "Last error description if failed"
+        timestamp updated_at "Update timestamp"
+    }
+
+    users ||--o{ connected_accounts : "has"
+    users ||--o{ emails : "owns"
+    users ||--o{ calendar_events : "owns"
+    users ||--o{ responsibilities : "manages"
+    users ||--o{ notifications : "receives"
+    users ||--o{ sync_state : "tracks"
+

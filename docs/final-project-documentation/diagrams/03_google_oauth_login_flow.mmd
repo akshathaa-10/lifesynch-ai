@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    actor User as User (Browser)
+    participant Front as Frontend (React SPA)
+    participant Back as Backend (Express API)
+    participant Google as Google Identity & OAuth 2.0
+    participant DB as Supabase PostgreSQL
+
+    User->>Front: Clicks "Sign in with Google"
+    Front->>Back: GET /api/v1/auth/google/url
+    Back->>Google: Generates OAuth URL with scopes (email, profile, gmail.readonly, calendar.readonly)
+    Back-->>Front: Returns authUrl
+    Front-->>User: Redirects browser to Google Consent Screen
+    
+    User->>Google: Authenticates & grants requested scopes
+    Google-->>Front: Redirects to /auth/callback?code=AUTH_CODE
+    
+    Front->>Back: POST /api/v1/auth/google/callback { code: AUTH_CODE }
+    Back->>Google: Exchanges AUTH_CODE for Access Token & Refresh Token
+    Google-->>Back: Returns { access_token, refresh_token, expiry_date, id_token }
+    
+    Back->>Google: Fetches user profile (email, name, picture)
+    Back->>DB: Upserts user record into 'users' table
+    Back->>DB: Encrypts & stores tokens into 'connected_accounts' table
+    Back->>Back: Generates LifeSynch JWT session token
+    Back-->>Front: Returns { token: JWT, user: { id, email, name, hasGmail, hasCalendar } }
+    
+    Front->>Front: Stores JWT in localStorage
+    Front-->>User: Navigates to Dashboard & initiates initial sync
+

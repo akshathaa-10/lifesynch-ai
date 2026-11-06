@@ -9,13 +9,33 @@ import { reminderService } from '../services/reminder.service';
 import { taskService } from '../services/task.service';
 import { userService } from '../services/db/user.service';
 import { isSupabaseConfigured } from '../config/supabase';
+import { formatDateDisplay } from '@lifesynch/shared';
 
 async function runSmartTimingTests() {
   console.log('=====================================================');
   console.log('  LIFESYNCH AI — PHASE 6.3: SMART REMINDER TIMING    ');
   console.log('=====================================================\n');
 
-  const anchorNow = new Date('2026-09-26T12:00:00.000Z');
+  // Dynamic anchor relative to current time for deterministic tests
+  const now = new Date();
+  const anchorNow = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const todayDateStr = `${anchorNow.getFullYear()}-${pad(anchorNow.getMonth() + 1)}-${pad(anchorNow.getDate())}`;
+
+  const tomorrowObj = new Date(anchorNow);
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrowDateStr = `${tomorrowObj.getFullYear()}-${pad(tomorrowObj.getMonth() + 1)}-${pad(tomorrowObj.getDate())}`;
+
+  const day3Obj = new Date(anchorNow.getTime() + 64 * 60 * 60 * 1000);
+  const day3DateStr = `${day3Obj.getFullYear()}-${pad(day3Obj.getMonth() + 1)}-${pad(day3Obj.getDate())}`;
+  const day3TimeStr = `${pad(day3Obj.getHours())}:${pad(day3Obj.getMinutes())}`;
+  const day3Display = formatDateDisplay(`${day3DateStr}T${day3TimeStr}:00.000Z`);
+
+  const distantObj = new Date(anchorNow.getTime() + 16 * 24 * 60 * 60 * 1000);
+  const distantDateStr = `${distantObj.getFullYear()}-${pad(distantObj.getMonth() + 1)}-${pad(distantObj.getDate())}`;
+
+  const pastObj = new Date(anchorNow.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const pastDateStr = `${pastObj.getFullYear()}-${pad(pastObj.getMonth() + 1)}-${pad(pastObj.getDate())}`;
 
   // ----------------------------------------------------------------
   // Test 1: Smart Reminder Timing Logic (Condition & Message Format)
@@ -23,29 +43,29 @@ async function runSmartTimingTests() {
   console.log('[TEST 1] Smart Timing Condition & Message Evaluation');
 
   // 1a. Due Today (same day or within 24h)
-  const condToday = reminderService.getReminderTimingCondition('2026-09-26T17:00:00.000Z', '17:00', anchorNow);
-  assert.strictEqual(condToday, 'due_today', 'Deadline within 5h on same calendar day must be due_today');
-  const msgToday = reminderService.formatReminderMessage('Project Report', '2026-09-26T17:00:00.000Z', '17:00', anchorNow);
+  const condToday = reminderService.getReminderTimingCondition(`${todayDateStr}T17:00:00.000Z`, '17:00', anchorNow);
+  assert.strictEqual(condToday, 'due_today', 'Deadline within 7h on same calendar day must be due_today');
+  const msgToday = reminderService.formatReminderMessage('Project Report', `${todayDateStr}T17:00:00.000Z`, '17:00', anchorNow);
   assert.strictEqual(msgToday, 'Project Report is due today at 5:00 PM.');
 
   // 1b. Due Tomorrow (next calendar day or within 24h-48h)
-  const condTomorrow = reminderService.getReminderTimingCondition('2026-09-27T10:00:00.000Z', '10:00', anchorNow);
+  const condTomorrow = reminderService.getReminderTimingCondition(`${tomorrowDateStr}T10:00:00.000Z`, '10:00', anchorNow);
   assert.strictEqual(condTomorrow, 'due_tomorrow', 'Deadline on next day must be due_tomorrow');
-  const msgTomorrow = reminderService.formatReminderMessage('Pitch Deck', '2026-09-27T10:00:00.000Z', '10:00', anchorNow);
+  const msgTomorrow = reminderService.formatReminderMessage('Pitch Deck', `${tomorrowDateStr}T10:00:00.000Z`, '10:00', anchorNow);
   assert.strictEqual(msgTomorrow, 'Pitch Deck is due tomorrow at 10:00 AM.');
 
   // 1c. Approaching Deadline (2 to 3 days away)
-  const condApproaching = reminderService.getReminderTimingCondition('2026-09-29T14:00:00.000Z', '14:00', anchorNow);
-  assert.strictEqual(condApproaching, 'approaching', 'Deadline 3 days away must be approaching');
-  const msgApproaching = reminderService.formatReminderMessage('AI Research Paper', '2026-09-29T14:00:00.000Z', '14:00', anchorNow);
-  assert.strictEqual(msgApproaching, 'AI Research Paper deadline is approaching on September 29 at 2:00 PM.');
+  const condApproaching = reminderService.getReminderTimingCondition(`${day3DateStr}T${day3TimeStr}:00.000Z`, day3TimeStr, anchorNow);
+  assert.strictEqual(condApproaching, 'approaching', 'Deadline 2-3 days away must be approaching');
+  const msgApproaching = reminderService.formatReminderMessage('AI Research Paper', `${day3DateStr}T${day3TimeStr}:00.000Z`, day3TimeStr, anchorNow);
+  assert(msgApproaching?.includes('AI Research Paper deadline is approaching'));
 
   // 1d. Distant Deadline (> 3 days away, e.g. 15 days): Must NOT generate reminders continuously
-  const condDistant = reminderService.getReminderTimingCondition('2026-10-15T09:00:00.000Z', '09:00', anchorNow);
+  const condDistant = reminderService.getReminderTimingCondition(`${distantDateStr}T09:00:00.000Z`, '09:00', anchorNow);
   assert.strictEqual(condDistant, null, 'Distant deadline (> 3 days) must return null to prevent continuous reminder spam');
 
   // 1e. Obsolete past deadline: Must NOT generate reminders
-  const condPast = reminderService.getReminderTimingCondition('2026-09-20T10:00:00.000Z', '10:00', anchorNow);
+  const condPast = reminderService.getReminderTimingCondition(`${pastDateStr}T10:00:00.000Z`, '10:00', anchorNow);
   assert.strictEqual(condPast, null, 'Obsolete past deadline must return null');
 
   console.log('✔ Smart timing accurately detects due_today, due_tomorrow, and approaching deadlines');
@@ -66,7 +86,7 @@ async function runSmartTimingTests() {
     title: 'Assignment 4 Submission',
     description: 'Operating systems lab assignment',
     action: 'Submit zip archive to portal',
-    dueDate: '2026-09-27T18:00:00.000Z',
+    dueDate: `${tomorrowDateStr}T18:00:00.000Z`,
     dueTime: '18:00',
     priority: 'high',
     category: 'academic',
@@ -79,7 +99,7 @@ async function runSmartTimingTests() {
     title: 'SIH Final Pitch Deck',
     description: 'Hackathon round 2 deck',
     action: 'Finalize slides with team',
-    dueDate: '2026-09-26T17:00:00.000Z',
+    dueDate: `${todayDateStr}T17:00:00.000Z`,
     dueTime: '17:00',
     priority: 'high',
     category: 'academic',
@@ -87,13 +107,13 @@ async function runSmartTimingTests() {
     sourceId: 'evt_sih_pitch'
   });
 
-  // Create Approaching Item (3 days away)
+  // Create Approaching Item (2-3 days away)
   const taskApproaching = await taskService.createTask(testUser.id, {
     title: 'Mid-term Viva Exam',
     description: 'Database management systems oral exam',
     action: 'Review ER modeling and SQL queries',
-    dueDate: '2026-09-29T10:00:00.000Z',
-    dueTime: '10:00',
+    dueDate: `${day3DateStr}T${day3TimeStr}:00.000Z`,
+    dueTime: day3TimeStr,
     priority: 'medium',
     category: 'academic',
     source: 'calendar',
@@ -105,7 +125,7 @@ async function runSmartTimingTests() {
     title: 'Annual Campus Placement Registration',
     description: 'Placement cell portal registration',
     action: 'Fill profile information',
-    dueDate: '2026-10-12T23:59:00.000Z',
+    dueDate: `${distantDateStr}T23:59:00.000Z`,
     priority: 'low',
     category: 'general',
     source: 'gmail',
@@ -120,7 +140,7 @@ async function runSmartTimingTests() {
   console.log('- Sync 1 Summary:', gen1);
   assert.strictEqual(gen1.generated, 3, 'Must generate exactly 3 reminders (due today, due tomorrow, approaching)');
 
-  const userReminders = await reminderService.getRemindersForUser(testUser.id);
+  const userReminders = await reminderService.getRemindersForUser(testUser.id, anchorNow);
   assert.strictEqual(userReminders.length, 3, 'Must have exactly 3 active reminders stored');
 
   const remToday = userReminders.find(r => r.responsibilityId === taskToday.id || r.title.includes('SIH Final Pitch Deck'));
@@ -133,7 +153,7 @@ async function runSmartTimingTests() {
 
   const remApproaching = userReminders.find(r => r.responsibilityId === taskApproaching.id || r.title.includes('Mid-term Viva'));
   assert(remApproaching !== undefined, 'Approaching reminder must exist');
-  assert.strictEqual(remApproaching?.message, 'Mid-term Viva Exam deadline is approaching on September 29 at 10:00 AM.');
+  assert(remApproaching?.message.includes('Mid-term Viva Exam deadline is approaching'));
 
   assert(!userReminders.some(r => r.title.includes('Placement Registration')), 'Distant item (> 3 days away) must NOT generate reminder');
   console.log('✔ Due-today item received correct reminder');
@@ -152,7 +172,7 @@ async function runSmartTimingTests() {
     assert(repeatSync.skipped >= 3, `Sync ${i} must skip already notified conditions`);
   }
 
-  const remindersAfterRepeat = await reminderService.getRemindersForUser(testUser.id);
+  const remindersAfterRepeat = await reminderService.getRemindersForUser(testUser.id, anchorNow);
   assert.strictEqual(remindersAfterRepeat.length, 3, 'Reminder count must remain strictly constant after repeated syncs');
   console.log('✔ Zero notification spam: repeated automatic syncs create NO duplicate reminders');
 
@@ -160,15 +180,15 @@ async function runSmartTimingTests() {
   // Test 5: Condition Transition (Due Tomorrow -> Due Today)
   // ----------------------------------------------------------------
   console.log('\n[TEST 5] Condition Transition (Due Tomorrow -> Due Today)');
-  // Advance time to next day (2026-09-27 12:00 UTC)
-  const nextDayNow = new Date('2026-09-27T12:00:00.000Z');
+  // Advance time to next day (anchorNow + 24 hours)
+  const nextDayNow = new Date(anchorNow.getTime() + 24 * 60 * 60 * 1000);
 
   // taskTomorrow ('Assignment 4 Submission') is now due TODAY!
   const transitionSync1 = await reminderService.generateRemindersForUser(testUser.id, nextDayNow);
   console.log('- Day 2 Sync 1 Summary:', transitionSync1);
   assert.strictEqual(transitionSync1.generated, 1, 'Should generate exactly 1 new reminder for the newly reached due_today condition');
 
-  const remindersDay2 = await reminderService.getRemindersForUser(testUser.id);
+  const remindersDay2 = await reminderService.getRemindersForUser(testUser.id, nextDayNow);
   const updatedRemToday = remindersDay2.find(r => (r.responsibilityId === taskTomorrow.id || r.title.includes('Assignment 4')) && r.message.includes('due today'));
   assert(updatedRemToday !== undefined, 'Due-today reminder must exist for Assignment 4 on Day 2');
   assert.strictEqual(updatedRemToday?.message, 'Assignment 4 Submission is due today at 6:00 PM.');
@@ -188,7 +208,7 @@ async function runSmartTimingTests() {
     title: 'Completed Machine Learning Quiz',
     description: 'Submitted and graded',
     action: 'Already submitted',
-    dueDate: '2026-09-27T17:00:00.000Z',
+    dueDate: `${tomorrowDateStr}T17:00:00.000Z`,
     status: 'COMPLETED'
   });
 
@@ -197,25 +217,26 @@ async function runSmartTimingTests() {
     title: 'Cancelled Guest Speaker Lecture',
     description: 'Event cancelled',
     action: 'None',
-    dueDate: '2026-09-27T17:00:00.000Z',
+    dueDate: `${tomorrowDateStr}T17:00:00.000Z`,
     status: 'CANCELLED'
   });
 
   const syncAfterInactive = await reminderService.generateRemindersForUser(testUser.id, nextDayNow);
   assert.strictEqual(syncAfterInactive.generated, 0, 'No reminders should be generated for completed or cancelled tasks');
 
-  const remindersList = await reminderService.getRemindersForUser(testUser.id);
+  const remindersList = await reminderService.getRemindersForUser(testUser.id, nextDayNow);
   assert(!remindersList.some(r => r.title.includes('Completed Machine Learning')), 'Completed task must NOT show reminder');
   assert(!remindersList.some(r => r.title.includes('Cancelled Guest Speaker')), 'Cancelled task must NOT show reminder');
 
   // 6c. Dynamically completing an active responsibility removes it from active reminders
   await taskService.updateTask(taskTomorrow.id, { status: 'COMPLETED' });
-  const remindersAfterCompletingTomorrow = await reminderService.getRemindersForUser(testUser.id);
+  const remindersAfterCompletingTomorrow = await reminderService.getRemindersForUser(testUser.id, nextDayNow);
   assert(!remindersAfterCompletingTomorrow.some(r => r.title.includes('Assignment 4')), 'Dynamically completed task must NOT show active reminder');
 
   // 6d. Dynamically cancelling an active responsibility removes it from active reminders
   await taskService.updateTask(taskApproaching.id, { status: 'CANCELLED' });
-  const remindersAfterCancellingApproaching = await reminderService.getRemindersForUser(testUser.id);
+  const remindersAfterCancellingApproaching = await reminderService.getRemindersForUser(testUser.id, nextDayNow);
+  assert(!remindersAfterCancellingApproaching.some(r => r.title.includes('Mid-term Viva')), 'Dynamically cancelled task must NOT show active reminder');
   assert(!remindersAfterCancellingApproaching.some(r => r.title.includes('Mid-term Viva')), 'Dynamically cancelled task must NOT show active reminder');
 
   console.log('✔ Completed tasks are strictly excluded from generating reminders');

@@ -1,0 +1,35 @@
+graph LR
+    User(("College Student / Working User"))
+
+    subgraph LifeSynchAI ["LifeSynch AI System Boundary"]
+        UC1["Sign In with Google Account"]
+        UC2["Authorize Gmail & Calendar Access"]
+        UC3["View Personal Intelligence Dashboard"]
+        UC4["View Actionable Responsibilities by Category"]
+        UC5["Update Responsibility Status (Mark Completed / Cancelled)"]
+        UC6["View Worth Knowing Information Feed"]
+        UC7["Ask LifeSynch AI Assistant Free-Form Questions"]
+        UC8["View Real-Time Deadline Reminders & Notifications"]
+        UC9["Mark Notifications as Read"]
+        UC10["Trigger On-Demand Data Synchronization"]
+        UC11["Automatic 30-Second Background Sync"]
+    end
+
+    User --> UC1
+    User --> UC2
+    User --> UC3
+    User --> UC4
+    User --> UC5
+    User --> UC6
+    User --> UC7
+    User --> UC8
+    User --> UC9
+    User --> UC10
+
+    UC1 -.->|triggers| UC2
+    UC2 -.->|enables| UC11
+    UC11 -.->|updates| UC3
+    UC11 -.->|populates| UC4
+    UC11 -.->|populates| UC6
+    UC11 -.->|generates| UC8
+

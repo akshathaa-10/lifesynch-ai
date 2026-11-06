@@ -1,0 +1,55 @@
+graph TB
+    subgraph UsersLayer ["Authenticated Users (Independent Google Accounts)"]
+        UserA["User A (Student A)<br/>JWT: sub=user_a_uuid"]
+        UserB["User B (Student B)<br/>JWT: sub=user_b_uuid"]
+    end
+
+    subgraph SecurityGateway ["API Security Gateway (Express Backend)"]
+        AuthMiddleware["requireAuth Middleware<br/>Verifies Bearer JWT signature & extracts req.user.id"]
+        LogSanitizer["Logger Sanitizer<br/>Redacts access_token, refresh_token, ya29, Bearer"]
+    end
+
+    subgraph ServicesIsolation ["Service Layer (Strict user_id Scoping)"]
+        TaskSvc["TaskService<br/>.eq('user_id', req.user.id)"]
+        GmailSvc["GmailService<br/>.eq('user_id', req.user.id)"]
+        CalSvc["CalendarService<br/>.eq('user_id', req.user.id)"]
+        ReminderSvc["ReminderService<br/>.eq('user_id', req.user.id)"]
+        AssistantSvc["AssistantService<br/>.eq('user_id', req.user.id)"]
+    end
+
+    subgraph DatabaseLayer ["Supabase PostgreSQL Multi-Tenant Database"]
+        subgraph UserAData ["User A Isolated Data"]
+            EmailsA[("Emails: user_id = A")]
+            EventsA[("Events: user_id = A")]
+            TasksA[("Responsibilities: user_id = A")]
+            NotifsA[("Notifications: user_id = A")]
+        end
+
+        subgraph UserBData ["User B Isolated Data"]
+            EmailsB[("Emails: user_id = B")]
+            EventsB[("Events: user_id = B")]
+            TasksB[("Responsibilities: user_id = B")]
+            NotifsB[("Notifications: user_id = B")]
+        end
+        
+        RLSPolicy["Row Level Security (RLS Policies)<br/>auth.uid() = user_id prevents cross-tenant access"]
+    end
+
+    UserA -->|Request with JWT A| AuthMiddleware
+    UserB -->|Request with JWT B| AuthMiddleware
+
+    AuthMiddleware --> LogSanitizer
+    LogSanitizer --> ServicesIsolation
+
+    TaskSvc -->|Scoped Queries Only| RLSPolicy
+    GmailSvc -->|Scoped Queries Only| RLSPolicy
+    CalSvc -->|Scoped Queries Only| RLSPolicy
+    ReminderSvc -->|Scoped Queries Only| RLSPolicy
+    AssistantSvc -->|Scoped Queries Only| RLSPolicy
+
+    RLSPolicy --> UserAData
+    RLSPolicy --> UserBData
+
+    UserA -.->|CANNOT ACCESS| UserBData
+    UserB -.->|CANNOT ACCESS| UserAData
+

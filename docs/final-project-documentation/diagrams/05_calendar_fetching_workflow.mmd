@@ -1,0 +1,34 @@
+flowchart TD
+    Start(["Start Calendar Sync (User ID)"]) --> CheckAuth["Validate Google OAuth Access Token"]
+    CheckAuth --> ExpiredCheck{"Is Access Token Expired?"}
+    
+    ExpiredCheck -->|Yes| RefreshToken["Refresh Access Token using Google OAuth<br/>Persist updated tokens in 'connected_accounts'"]
+    ExpiredCheck -->|No| InitClient["Initialize google.calendar({ version: 'v3' })"]
+    RefreshToken --> InitClient
+
+    InitClient --> FetchEvents["Call calendar.events.list<br/>calendarId: 'primary', singleEvents: true<br/>timeMin: 30 days ago, timeMax: 90 days ahead"]
+    
+    FetchEvents --> ParseEvents["Iterate through Google Calendar Event Items"]
+    
+    subgraph EventTypeHandling ["Timezone & Event Type Parsing"]
+        ParseEvents --> IsAllDay{"Has item.start.date (All-Day Event)?"}
+        IsAllDay -->|Yes: Date Only| HandleAllDay["Set startTime = dateT00:00:00.000Z<br/>Set endTime = dateT23:59:59.999Z"]
+        IsAllDay -->|No: dateTime| HandleTimed["Parse exact ISO timestamp<br/>Preserve exact start and end moments"]
+    end
+    
+    HandleAllDay --> StatusCheck{"Is item.status == 'cancelled'?"}
+    HandleTimed --> StatusCheck
+    
+    StatusCheck -->|Cancelled| FlagCancelled["Set status = 'cancelled' in event record"]
+    StatusCheck -->|Confirmed| FlagConfirmed["Set status = 'confirmed' in event record"]
+    
+    FlagCancelled --> BatchUpsert["Upsert records into Supabase 'calendar_events'<br/>onConflict: 'user_id,event_id'"]
+    FlagConfirmed --> BatchUpsert
+    
+    BatchUpsert --> DetectChanges{"Any new or cancelled events?"}
+    DetectChanges -->|Yes| PushReminder["Call ReminderService.notifyCalendarEventChange<br/>(Create instant in-app notification)"]
+    DetectChanges -->|No| UpdateSync["Update 'sync_state' table (status: 'success', lastSyncedAt)"]
+    PushReminder --> UpdateSync
+    
+    UpdateSync --> End(["Calendar Sync Complete"])
+

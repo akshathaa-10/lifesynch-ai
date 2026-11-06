@@ -1,0 +1,45 @@
+flowchart TD
+    Trigger["ReminderService.generateRemindersForUser(userId)"] --> Cleanup["cleanupExpiredNotifications(userId)<br/>Delete existing 'Overdue:%' notifications from DB"]
+    
+    Cleanup --> FetchTasks["Query active responsibilities for user from Supabase"]
+    FetchTasks --> FilterActive["Exclude COMPLETED, CANCELLED, dismissed, or archived tasks"]
+    
+    FilterActive --> HasDeadline{"Has dueDate?"}
+    HasDeadline -->|No| SkipNoDead["Skip (No reminder for open-ended tasks)"]
+    HasDeadline -->|Yes| ResolveDeadline["resolveDeadlineTimestamp(dueDate, dueTime)"]
+    
+    subgraph TimezoneResolution ["IST Timezone Normalization"]
+        ResolveDeadline --> CheckAllDay{"Is ISO UTC midnight (T00:00:00.000Z) or local midnight?"}
+        CheckAllDay -->|Yes: All-day event| SetEndOfDay["Resolve to 23:59:59.999 Local Time (IST)<br/>(Prevent false 5:30 AM morning notification)"]
+        CheckAllDay -->|No: Has clock time| SetExactTime["Resolve to exact scheduled timestamp (e.g., 17:00 IST)"]
+    end
+    
+    SetEndOfDay --> PastCheck{"Is deadlineMs < refNowMs (Past Deadline)?"}
+    SetExactTime --> PastCheck
+    
+    PastCheck -->|Yes: Past / Overdue| ExcludePast["STRICT RULE: Return null<br/>(Do NOT generate notification for expired deadlines)"]
+    PastCheck -->|No: Future / Arriving| EvalCondition["Evaluate Reminder Timing Condition:"]
+    
+    EvalCondition --> Cond1{"diffHours <= 1?"}
+    Cond1 -->|Yes| DueNow["'due_now' -> Urgent notification"]
+    Cond1 -->|No| Cond2{"Same calendar day?"}
+    
+    Cond2 -->|Yes| DueToday["'due_today' -> Due today reminder"]
+    Cond2 -->|No| Cond3{"Tomorrow (diffHours <= 36)?"}
+    
+    Cond3 -->|Yes| DueTomorrow["'due_tomorrow' -> Due tomorrow reminder"]
+    Cond3 -->|No| Cond4{"diffHours <= 72 (2-3 days)?"}
+    
+    Cond4 -->|Yes| Approaching["'approaching' -> Approaching deadline reminder"]
+    Cond4 -->|No: > 72 hours| Distant["Distant obligation -> Return null (Suppress spam)"]
+    
+    DueNow --> CheckDedup["Check if condition already notified in metadata / DB"]
+    DueToday --> CheckDedup
+    DueTomorrow --> CheckDedup
+    Approaching --> CheckDedup
+    
+    CheckDedup -->|Already Reminded| SkipDedup["Skip (Idempotency guarantee)"]
+    CheckDedup -->|New Condition| CreateNotif["Insert into Supabase 'notifications' table<br/>(user_id, title, message, type, is_read: false)"]
+    
+    CreateNotif --> UI["Frontend loads reminders via GET /api/v1/reminders<br/>Displays in Notification Drawer with Mark-As-Read"]
+

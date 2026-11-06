@@ -1,0 +1,57 @@
+graph TD
+    subgraph ClientLayer ["1. Client Layer (Frontend SPA)"]
+        UI["React 18 + TypeScript + Vite + Tailwind CSS"]
+        Pages["Pages: Login, Dashboard, Responsibilities, Worth Knowing, Assistant, Notifications"]
+        AuthContext["Auth Context (JWT stored in localStorage)"]
+        ApiClient["Axios API Client (Bearer Token Auth Interceptor)"]
+    end
+
+    subgraph ServerLayer ["2. Server Layer (Node.js & Express Backend)"]
+        Server["Express HTTP Server (Port 5000)"]
+        Middlewares["Middlewares: CORS, requireAuth, Logger Sanitizer, Error Handler"]
+        Routes["API Routes: /api/v1/auth, /tasks, /sync, /reminders, /assistant, /health"]
+        Controllers["Controllers: Auth, Task, Sync, Reminder, Assistant, Health"]
+    end
+
+    subgraph ServiceLayer ["3. Core Services Layer (Business Logic)"]
+        OAuthSvc["Google OAuth Service (Token Exchange & Auto-Refresh)"]
+        GmailSvc["Gmail Service (MIME Parsing, Pagination, Sync)"]
+        CalSvc["Calendar Service (Timed & All-Day Event Sync)"]
+        AutoSyncSvc["Auto-Sync Background Service (Periodic 30s Runner)"]
+        AISvc["AI Responsibility Generation Service (Zod Parsing & Deduplication)"]
+        ReminderSvc["Smart Reminder Service (IST Timezone & Condition Evaluator)"]
+        AssistantSvc["Ask LifeSynch AI Service (Intent Analyzer & Grounded Fallback)"]
+    end
+
+    subgraph ExternalServices ["4. External Integrations"]
+        GoogleAuth["Google Identity (OAuth 2.0)"]
+        GoogleGmail["Google Gmail API (v1 REST)"]
+        GoogleCalendar["Google Calendar API (v3 REST)"]
+        GeminiAPI["Google Gemini API (generativelanguage.googleapis.com)"]
+    end
+
+    subgraph DataLayer ["5. Database Layer (Supabase PostgreSQL)"]
+        SupaClient["Supabase Admin Client (Service Role)"]
+        RLS["Row Level Security (RLS Policies)"]
+        Tables["Tables: users, connected_accounts, emails, calendar_events, responsibilities, notifications, sync_state"]
+    end
+
+    UI --> ApiClient
+    ApiClient -->|HTTP / JSON with Bearer JWT| Server
+    Server --> Middlewares --> Routes --> Controllers
+    Controllers --> ServiceLayer
+    
+    OAuthSvc <-->|OAuth2 Token Exchange| GoogleAuth
+    GmailSvc <-->|Fetch Messages & Details| GoogleGmail
+    CalSvc <-->|Fetch Primary Calendar Events| GoogleCalendar
+    AutoSyncSvc --> GmailSvc
+    AutoSyncSvc --> CalSvc
+    AutoSyncSvc --> AISvc
+    AutoSyncSvc --> ReminderSvc
+
+    AISvc <-->|LLM Prompting (LLM_API_KEY)| GeminiAPI
+    AssistantSvc <-->|LLM Chat & Grounded Context| GeminiAPI
+    
+    ServiceLayer <-->|Service Role Admin Queries| SupaClient
+    SupaClient --> RLS --> Tables
+

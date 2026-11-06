@@ -1,0 +1,30 @@
+flowchart TD
+    Start(["Start AI Extraction (User ID)"]) --> ReadFeeds["Read stored emails (50) & calendar events from Supabase"]
+    ReadFeeds --> FalseDeadlines["Cleanse false deadlines on known informational emails<br/>(Newsletters, password resets, webinar invites)"]
+    
+    FalseDeadlines --> PrepPrompt["Prepare Structured System & User Prompt<br/>Embed email subjects, snippets, body excerpts, dates"]
+    
+    PrepPrompt --> ReadConfig["Read LLM_API_KEY, LLM_PROVIDER ('gemini'), LLM_MODEL ('gemini-flash-lite-latest')"]
+    ReadConfig --> HasKey{"Is LLM_API_KEY configured in backend/.env?"}
+    
+    HasKey -->|No| ErrConfig["Throw LLM_CONFIG_MISSING (400)"]
+    HasKey -->|Yes| CallGemini["Call Google Gemini API via HTTPS POST<br/>generativelanguage.googleapis.com"]
+    
+    CallGemini --> ModelFallback{"Gemini Candidate Evaluation"}
+    ModelFallback -->|HTTP 429 Quota Exhausted| ReportUnverified["Log HTTP 429 (RESOURCE_EXHAUSTED)<br/>Mark Live AI Extraction as NOT VERIFIED<br/>(Free Tier limit 20 req/day reached)"]
+    ModelFallback -->|HTTP 200 JSON Response| ParseJSON["Parse raw JSON string output"]
+    
+    ParseJSON --> ZodValidation["Validate against Zod Schema<br/>ExtractedResponsibilitiesSchema"]
+    
+    ZodValidation --> SchemaPass{"Zod Validation Result"}
+    SchemaPass -->|Invalid Format| RejectSafe["Reject malformed outputs & log diagnostics"]
+    SchemaPass -->|Valid Schema| NormalizeEnums["Normalize Types (task, deadline, appointment, reminder, other)<br/>Normalize Priorities (urgent, high, medium, low)"]
+    
+    NormalizeEnums --> MapMetadata["Extract Clock Time to metadata.dueTime<br/>Extract Category (academic, career, personal, financial, general)"]
+    
+    MapMetadata --> DeduplicateDB["Check existing tasks in Supabase 'responsibilities'<br/>Deduplicate by source_id, title similarity, and due_date"]
+    
+    DeduplicateDB --> InsertDB["Insert new responsibilities into 'responsibilities' table<br/>(user_id, title, status: 'pending', due_date, metadata: JSONB)"]
+    InsertDB --> End(["Extraction Complete"])
+    ReportUnverified --> End
+

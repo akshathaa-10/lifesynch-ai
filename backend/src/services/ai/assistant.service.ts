@@ -1083,6 +1083,11 @@ export class AssistantService {
       todayStr: string;
       tomorrowStr: string;
       currentTimeStr: string;
+      currentIso?: string;
+      thisWeekStartStr?: string;
+      thisWeekEndStr?: string;
+      nextWeekStartStr?: string;
+      nextWeekEndStr?: string;
       allSections?: {
         yourDay: Array<ClassifiedLifeItem & { formattedScheduleText: string }>;
         upcoming: Array<ClassifiedLifeItem & { formattedScheduleText: string }>;
